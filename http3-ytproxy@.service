@@ -5,15 +5,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=http
+Group=http
 Environment="DISABLE_WEBP=1"
 WorkingDirectory=/opt/http3-ytproxy
 ExecStart=/opt/http3-ytproxy/http3-ytproxy -s http-proxy-%i.sock
 Restart=on-failure
 RestartSec=2s
 
-#ReadWritePaths=/opt/rimgo
+ReadWritePaths=/opt/http3-ytproxy/socket
 NoNewPrivileges=yes
 MemoryDenyWriteExecute=true
 PrivateDevices=yes

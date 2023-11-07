@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"flag"
 
 	"github.com/kolesa-team/go-webp/encoder"
 	"github.com/kolesa-team/go-webp/webp"
@@ -51,7 +52,7 @@ var h2client = &http.Client{
 }
 
 // user agent to use
-var ua = "Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101"
+var ua = "Mozilla/5.0 (Windows NT 10.0; rv:102.0) Gecko/20100101"
 
 var allowed_hosts = []string{
 	"youtube.com",
@@ -300,12 +301,26 @@ func RelativeUrl(in string) (newurl string) {
 }
 
 func main() {
+    var sock string
+
 	path_prefix = os.Getenv("PREFIX_PATH")
 
 	disable_ipv6 = os.Getenv("DISABLE_IPV6") == "1"
 	disable_webp = os.Getenv("DISABLE_WEBP") == "1"
 
-	socket := "socket" + string(os.PathSeparator) + "http-proxy.sock"
+	if _, err := os.Stat("socket"); os.IsNotExist(err) {
+		fmt.Println("socket folder doesn't exists, creating one now.")
+	    err = os.Mkdir("socket", 0755)
+    	if err != nil {
+			fmt.Println("Failed to create folder, error:")
+        	log.Fatal(err)
+    	}
+	}
+
+    flag.StringVar(&sock, "s", "http-proxy.sock", "Specify a socket name")
+ 	flag.Parse()
+ 
+	socket := "socket" + string(os.PathSeparator) + string(sock)
 	syscall.Unlink(socket)
 	listener, err := net.Listen("unix", socket)
 	srv := &http.Server{

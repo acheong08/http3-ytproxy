@@ -302,6 +302,7 @@ func RelativeUrl(in string) (newurl string) {
 
 func main() {
     var sock string
+	var port string
 
 	path_prefix = os.Getenv("PREFIX_PATH")
 
@@ -312,12 +313,13 @@ func main() {
 		fmt.Println("socket folder doesn't exists, creating one now.")
 	    err = os.Mkdir("socket", 0755)
     	if err != nil {
-			fmt.Println("Failed to create folder, error:")
+			fmt.Println("Failed to create folder, error: ")
         	log.Fatal(err)
     	}
 	}
 
     flag.StringVar(&sock, "s", "http-proxy.sock", "Specify a socket name")
+	flag.StringVar(&port, "p", "8080", "Specify a port number")
  	flag.Parse()
  
 	socket := "socket" + string(os.PathSeparator) + string(sock)
@@ -326,13 +328,17 @@ func main() {
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
-		Addr:         ":8080",
+		Addr:         ":" + string(port),
 		Handler:      &requesthandler{},
 	}
 	if err != nil {
-		fmt.Println("Failed to bind to UDS, falling back to TCP/IP")
+		fmt.Println("Failed to bind to UDS, please check the socket name, falling back to TCP/IP")
 		fmt.Println(err.Error())
-		srv.ListenAndServe()
+		err := srv.ListenAndServe()
+		if err != nil {
+			fmt.Println("Cannot bind to port", string(port), "Error:", err)
+			fmt.Println("Please try changing the port number")
+		}
 	} else {
 		defer listener.Close()
 		srv.Serve(listener)

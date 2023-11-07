@@ -9,9 +9,9 @@ User=root
 Group=root
 Environment="DISABLE_WEBP=1"
 WorkingDirectory=/opt/http3-ytproxy
-ExecStart=/opt/http3-ytproxy/http3-ytproxy
+ExecStart=/opt/http3-ytproxy/http3-ytproxy -s http-proxy-%i.sock
 Restart=on-failure
-RestartSec=3s
+RestartSec=2s
 
 #ReadWritePaths=/opt/rimgo
 NoNewPrivileges=yes

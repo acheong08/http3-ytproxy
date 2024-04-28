@@ -301,7 +301,7 @@ func RelativeUrl(in string) (newurl string) {
 }
 
 func main() {
-    var sock string
+	var sock string
 	var port string
 
 	path_prefix = os.Getenv("PREFIX_PATH")
@@ -318,7 +318,7 @@ func main() {
     	}
 	}
 
-    flag.StringVar(&sock, "s", "http-proxy.sock", "Specify a socket name")
+	flag.StringVar(&sock, "s", "http-proxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
  	flag.Parse()
  
@@ -341,6 +341,6 @@ func main() {
 		}
 	} else {
 		defer listener.Close()
-		srv.Serve(listener)
+		srv.ListenAndServe()
 	}
 }

@@ -1,0 +1,22 @@
+# Docker compose file for http3-proxy used in Invidious
+
+services:
+
+  http3-proxy:
+    image: git.nadeko.net/fijxu/http3-proxy:latest
+    restart: unless-stopped
+    deploy: 
+      replicas: 6
+    environment:
+      DISABLE_WEBP: 1
+
+  http3-proxy-nginx:
+   image: nginx:latest
+   restart: unless-stopped
+   volumes:
+     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+   depends_on:
+     - http3-proxy
+   ports:
+     - "127.0.0.1:10012:3000"
+

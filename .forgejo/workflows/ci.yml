@@ -1,0 +1,35 @@
+name: 'CI'
+
+on:
+  # workflow_dispatch:
+  #   inputs: {}
+  #  schedule:
+  #  - cron: '0 7 * * 0'
+  push:
+    branches: ["*"]
+
+jobs:
+  build:
+    runs-on: runner
+    
+    steps:
+    - uses: https://code.forgejo.org/actions/checkout@v2
+
+    - uses: https://code.forgejo.org/docker/setup-buildx-action@v3
+      name: Setup Docker BuildX system
+
+    - name: Login to Docker Container Registry
+      uses: https://code.forgejo.org/docker/login-action@v3.1.0
+      with:
+        registry: git.nadeko.net
+        username: ${{ secrets.USERNAME }}
+        password: ${{ secrets.TOKEN }}
+
+    - uses: https://code.forgejo.org/docker/build-push-action@v5
+      name: Build images
+      with:
+        context: .
+        tags: git.nadeko.net/fijxu/http3-proxy:latest 
+        platforms: linux/amd64
+        push: true
+

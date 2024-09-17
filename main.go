@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image/jpeg"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"flag"
 
 	"github.com/kolesa-team/go-webp/encoder"
 	"github.com/kolesa-team/go-webp/webp"
@@ -23,6 +23,7 @@ import (
 // http/3 client
 var h3client = &http.Client{
 	Transport: &http3.RoundTripper{},
+	Timeout:   10 * time.Second,
 }
 
 var dialer = &net.Dialer{
@@ -168,7 +169,7 @@ func (*requesthandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var client *http.Client
 
 	// https://github.com/lucas-clemente/quic-go/issues/2836
-	client = h2client
+	client = h3client
 
 	resp, err := client.Do(request)
 
@@ -311,17 +312,17 @@ func main() {
 
 	if _, err := os.Stat("socket"); os.IsNotExist(err) {
 		fmt.Println("socket folder doesn't exists, creating one now.")
-	    err = os.Mkdir("socket", 0755)
-    	if err != nil {
+		err = os.Mkdir("socket", 0755)
+		if err != nil {
 			fmt.Println("Failed to create folder, error: ")
-        	log.Fatal(err)
-    	}
+			log.Fatal(err)
+		}
 	}
 
 	flag.StringVar(&sock, "s", "http-proxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
- 	flag.Parse()
- 
+	flag.Parse()
+
 	socket := "socket" + string(os.PathSeparator) + string(sock)
 	syscall.Unlink(socket)
 	listener, err := net.Listen("unix", socket)

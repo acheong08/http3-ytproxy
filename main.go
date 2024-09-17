@@ -169,7 +169,7 @@ func (*requesthandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var client *http.Client
 
 	// https://github.com/lucas-clemente/quic-go/issues/2836
-	client = h3client
+	client = h2client
 
 	resp, err := client.Do(request)
 

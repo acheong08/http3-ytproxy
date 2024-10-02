@@ -310,28 +310,30 @@ func main() {
 	disable_ipv6 = os.Getenv("DISABLE_IPV6") == "1"
 	disable_webp = os.Getenv("DISABLE_WEBP") == "1"
 
-	if _, err := os.Stat("socket"); os.IsNotExist(err) {
-		fmt.Println("socket folder doesn't exists, creating one now.")
-		err = os.Mkdir("socket", 0755)
-		if err != nil {
-			fmt.Println("Failed to create folder, error: ")
-			log.Fatal(err)
-		}
-	}
+	// if _, err := os.Stat("socket"); os.IsNotExist(err) {
+	// 	fmt.Println("socket folder doesn't exists, creating one now.")
+	// 	err = os.Mkdir("socket", 0777)
+	// 	if err != nil {
+	// 		fmt.Println("Failed to create folder, error: ")
+	// 		log.Fatal(err)
+	// 	}
+	// }
 
-	flag.StringVar(&sock, "s", "http-proxy.sock", "Specify a socket name")
+	flag.StringVar(&sock, "s", "/run/http-proxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
 	flag.Parse()
 
-	socket := "socket" + string(os.PathSeparator) + string(sock)
+	socket := string(sock)
 	syscall.Unlink(socket)
 	listener, err := net.Listen("unix", socket)
+
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
 		Addr:         ":" + string(port),
 		Handler:      &requesthandler{},
 	}
+
 	if err != nil {
 		fmt.Println("Failed to bind to UDS, please check the socket name, falling back to TCP/IP")
 		fmt.Println(err.Error())
@@ -342,6 +344,15 @@ func main() {
 		}
 	} else {
 		defer listener.Close()
+		// To allow everyone to access the socket
+		err = os.Chmod(socket, 0777)
+		if err != nil {
+			fmt.Println("Error setting permissions:", err)
+			return
+		} else {
+			fmt.Println("Setting socket permissions to 777")
+		}
+		go srv.Serve(listener)
 		srv.ListenAndServe()
 	}
 }

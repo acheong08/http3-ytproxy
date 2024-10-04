@@ -303,7 +303,10 @@ func RelativeUrl(in string) (newurl string) {
 
 func main() {
 	var sock string
+	var host string
 	var port string
+	var cert string
+	var key string
 
 	path_prefix = os.Getenv("PREFIX_PATH")
 
@@ -319,20 +322,24 @@ func main() {
 	// 	}
 	// }
 
-	flag.StringVar(&sock, "s", "/run/http-proxy.sock", "Specify a socket name")
+	flag.StringVar(&cert, "tls-cert", "", "TLS Certificate path")
+	flag.StringVar(&key, "tls-key", "", "TLS Certificate Key path")
+	var https = flag.Bool("https", false, "Use built-in https server")
+	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
+	flag.StringVar(&host, "l", "127.0.0.1", "Specify a listen address")
 	flag.Parse()
-
-	socket := string(sock)
-	syscall.Unlink(socket)
-	listener, err := net.Listen("unix", socket)
 
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
-		Addr:         ":" + string(port),
+		Addr:         string(host) + ":" + string(port),
 		Handler:      &requesthandler{},
 	}
+
+	socket := string(sock)
+	syscall.Unlink(socket)
+	listener, err := net.Listen("unix", socket)
 
 	if err != nil {
 		fmt.Println("Failed to bind to UDS, please check the socket name, falling back to TCP/IP")
@@ -353,6 +360,14 @@ func main() {
 			fmt.Println("Setting socket permissions to 777")
 		}
 		go srv.Serve(listener)
-		srv.ListenAndServe()
+		if *https {
+			if err := srv.ListenAndServeTLS(cert, key); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println("Serving HTTPS")
+		} else {
+			fmt.Println("Serving HTTP")
+			srv.ListenAndServe()
+		}
 	}
 }

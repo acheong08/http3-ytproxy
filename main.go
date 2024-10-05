@@ -73,6 +73,9 @@ var strip_headers = []string{
 	"Cookie",
 	"Set-Cookie",
 	"Etag",
+	"Alt-Svc",
+	"Server",
+	"Cache-Control",
 }
 
 var path_prefix = ""

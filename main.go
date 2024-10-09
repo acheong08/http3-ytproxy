@@ -99,23 +99,34 @@ func (*requesthandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	q := req.URL.Query()
+	host := q.Get("host")
+
+	if len(host) <= 0 {
+		host = q.Get("hls_chunk_host")
+	}
+
+	if len(host) <= 0 {
+		host = getHost(req.URL.EscapedPath())
+	}
 
 	// https://rr(mvi)---(mn).googlevideo.com
+	if len(host) <= 0 {
+		mvi := q.Get("mvi")
+		mn := strings.Split(q.Get("mn"), ",")
+		if len(mvi) <= 0 {
+			io.WriteString(w, "No `mvi` in query parameters")
+			return
+		}
 
-	mvi := q.Get("mvi")
-	mn := strings.Split(q.Get("mn"), ",")
-
-	if len(mvi) <= 0 {
-		io.WriteString(w, "No `mvi` in query parameters")
-		return
+		if len(mn) <= 0 {
+			io.WriteString(w, "No `mn` in query parameters")
+			return
+		}
+		host = "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
+	} else {
+		io.WriteString(w, "Not possible to build host url from `mvi` and `mn`.")
 	}
 
-	if len(mn) <= 0 {
-		io.WriteString(w, "No `mn` in query parameters")
-		return
-	}
-
-	host := "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
 	q.Del("host")
 
 	parts := strings.Split(strings.ToLower(host), ".")

@@ -341,7 +341,7 @@ func main() {
 	var https = flag.Bool("https", false, "Use built-in https server")
 	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
-	flag.StringVar(&host, "l", "127.0.0.1", "Specify a listen address")
+	flag.StringVar(&host, "l", "0.0.0.0", "Specify a listen address")
 	flag.Parse()
 
 	srv := &http.Server{

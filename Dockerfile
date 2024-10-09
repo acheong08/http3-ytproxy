@@ -17,4 +17,4 @@ WORKDIR /app/
 
 COPY --from=build /app/main /app/http3-ytproxy
 
-CMD ./http3-ytproxy
+CMD ./http3-ytproxy -l 0.0.0.0

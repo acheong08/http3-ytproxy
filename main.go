@@ -100,6 +100,7 @@ func (*requesthandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	q := req.URL.Query()
 	host := q.Get("host")
+	q.Del("host")
 
 	if len(host) <= 0 {
 		host = q.Get("hls_chunk_host")
@@ -123,11 +124,7 @@ func (*requesthandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		host = "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
-	} else {
-		io.WriteString(w, "Not possible to build host url from `mvi` and `mn`.")
 	}
-
-	q.Del("host")
 
 	parts := strings.Split(strings.ToLower(host), ".")
 

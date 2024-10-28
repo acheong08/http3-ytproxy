@@ -35,10 +35,13 @@ var dialer = &net.Dialer{
 var h2client = &http.Client{
 	Transport: &http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
-			if disable_ipv6 {
-				network = "tcp4"
+			var net string
+			if ipv6_only {
+				net = "tcp6"
+			} else {
+				net = "tcp4"
 			}
-			return dialer.Dial(network, addr)
+			return dialer.Dial(net, addr)
 		},
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 20 * time.Second,
@@ -82,7 +85,7 @@ var path_prefix = ""
 
 var manifest_re = regexp.MustCompile(`(?m)URI="([^"]+)"`)
 
-var disable_ipv6 = false
+var ipv6_only = false
 var disable_webp = false
 
 type requesthandler struct{}
@@ -324,7 +327,7 @@ func main() {
 
 	path_prefix = os.Getenv("PREFIX_PATH")
 
-	disable_ipv6 = os.Getenv("DISABLE_IPV6") == "1"
+	ipv6_only = os.Getenv("IPV6_ONLY") == "1"
 	disable_webp = os.Getenv("DISABLE_WEBP") == "1"
 
 	// if _, err := os.Stat("socket"); os.IsNotExist(err) {
@@ -339,10 +342,13 @@ func main() {
 	flag.StringVar(&cert, "tls-cert", "", "TLS Certificate path")
 	flag.StringVar(&key, "tls-key", "", "TLS Certificate Key path")
 	var https = flag.Bool("https", false, "Use built-in https server")
+	var ipv6 = flag.Bool("ipv6_only", false, "Only use ipv6 for requests")
 	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
 	flag.StringVar(&host, "l", "0.0.0.0", "Specify a listen address")
 	flag.Parse()
+
+	ipv6_only = *ipv6
 
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,

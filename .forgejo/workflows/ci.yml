@@ -15,6 +15,11 @@ jobs:
     steps:
     - uses: https://code.forgejo.org/actions/checkout@v2
 
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+      with:
+        platforms: all
+
     - uses: https://code.forgejo.org/docker/setup-buildx-action@v3
       name: Setup Docker BuildX system
 
@@ -29,7 +34,7 @@ jobs:
       name: Build images
       with:
         context: .
-        tags: git.nadeko.net/fijxu/http3-ytproxy:latest 
-        platforms: linux/amd64
+        tags: git.nadeko.net/fijxu/http3-ytproxy:latest
+        platforms: linux/amd64,linux/arm64/v8
         push: true
 

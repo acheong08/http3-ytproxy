@@ -10,16 +10,15 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/quic-go/quic-go/http3"
 )
 
-// http/3 client
 var h3client = &http.Client{
-	Transport: &http3.RoundTripper{},
+	Transport: &http3.Transport{},
 	Timeout:   10 * time.Second,
 }
 
@@ -85,29 +84,95 @@ var manifest_re = regexp.MustCompile(`(?m)URI="([^"]+)"`)
 
 var ipv6_only = false
 
-var reqs int64
-var reqs_Forbidden int64
-var mu sync.Mutex
-
 type statusJson struct {
 	RequestCount      int64 `json:"requestCount"`
-	RequestsForbidden int64 `json:"requestsForbidden"`
+	RequestPerSecond  int64 `json:"requestPerSecond"`
+	RequestPerMinute  int64 `json:"requestPerMinute"`
+	RequestsForbidden struct {
+		Videoplayback int64 `json:"videoplayback"`
+		Vi            int64 `json:"vi"`
+		Ggpht         int64 `json:"ggpht"`
+	} `json:"requestsForbidden"`
+}
+
+var stats_ = statusJson{
+	RequestCount:     0,
+	RequestPerSecond: 0,
+	RequestPerMinute: 0,
+	RequestsForbidden: struct {
+		Videoplayback int64 `json:"videoplayback"`
+		Vi            int64 `json:"vi"`
+		Ggpht         int64 `json:"ggpht"`
+	}{
+		Videoplayback: 0,
+		Vi:            0,
+		Ggpht:         0,
+	},
 }
 
 func root(w http.ResponseWriter, req *http.Request) {
-	io.WriteString(w, "HTTP youtube proxy for https://inv.nadeko.net\n")
+	const msg = `
+	HTTP youtube proxy for https://inv.nadeko.net
+	https://git.nadeko.net/Fijxu/http3-ytproxy
+	
+	Routes: 
+	/stats
+	/health`
+	io.WriteString(w, msg)
 }
 
-func status(w http.ResponseWriter, req *http.Request) {
-	response := statusJson{
-		RequestCount:      reqs,
-		RequestsForbidden: reqs_Forbidden,
-	}
-
+func stats(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := json.NewEncoder(w).Encode(stats_); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func health(w http.ResponseWriter, req *http.Request) {
+	w.WriteHeader(200)
+	io.WriteString(w, "OK")
+}
+
+func requestPerSecond() {
+	var last int64
+	for {
+		time.Sleep(1 * time.Second)
+		current := stats_.RequestCount
+		stats_.RequestPerSecond = current - last
+		last = current
+	}
+}
+
+func requestPerMinute() {
+	var last int64
+	for {
+		time.Sleep(60 * time.Second)
+		current := stats_.RequestCount
+		stats_.RequestPerSecond = current - last
+		last = current
+	}
+}
+
+func beforeAll(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != "GET" && req.Method != "HEAD" {
+			io.WriteString(w, "Only GET and HEAD requests are allowed.")
+			return
+		}
+
+		atomic.AddInt64(&stats_.RequestCount, 1)
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Max-Age", "1728000")
+
+		if req.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next(w, req)
 	}
 }
 
@@ -115,36 +180,51 @@ func main() {
 	var sock string
 	var host string
 	var port string
-	var cert string
-	var key string
+	var tls_cert string
+	var tls_key string
 
 	path_prefix = os.Getenv("PREFIX_PATH")
-
 	ipv6_only = os.Getenv("IPV6_ONLY") == "1"
-	// disable_webp = os.Getenv("DISABLE_WEBP") == "1"
 
-	flag.StringVar(&cert, "tls-cert", "", "TLS Certificate path")
-	flag.StringVar(&key, "tls-key", "", "TLS Certificate Key path")
 	var https = flag.Bool("https", false, "Use built-in https server")
 	var ipv6 = flag.Bool("ipv6_only", false, "Only use ipv6 for requests")
+	flag.StringVar(&tls_cert, "tls-cert", "", "TLS Certificate path")
+	flag.StringVar(&tls_key, "tls-key", "", "TLS Certificate Key path")
 	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
 	flag.StringVar(&host, "l", "0.0.0.0", "Specify a listen address")
 	flag.Parse()
+
+	if *https {
+		if len(tls_cert) <= 0 {
+			fmt.Println("tls-cert argument is missing")
+			fmt.Println("You need a TLS certificate for HTTPS")
+		}
+
+		if len(tls_key) <= 0 {
+			fmt.Println("tls-key argument is missing")
+			fmt.Println("You need a TLS key for HTTPS")
+		}
+	}
 
 	ipv6_only = *ipv6
 
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", root)
-	mux.HandleFunc("/status", status)
-	mux.HandleFunc("/videoplayback", videoplayback)
-	mux.HandleFunc("/vi/", vi)
-	mux.HandleFunc("/vi_webp/", vi)
-	mux.HandleFunc("/sb/", vi)
-	mux.HandleFunc("/ggpht/", ggpht)
-	mux.HandleFunc("/a/", ggpht)
-	mux.HandleFunc("/ytc/", ggpht)
+	mux.HandleFunc("/health", health)
+	mux.HandleFunc("/stats", stats)
+
+	mux.HandleFunc("/videoplayback", beforeAll(videoplayback))
+	mux.HandleFunc("/vi/", beforeAll(vi))
+	mux.HandleFunc("/vi_webp/", beforeAll(vi))
+	mux.HandleFunc("/sb/", beforeAll(vi))
+	mux.HandleFunc("/ggpht/", beforeAll(ggpht))
+	mux.HandleFunc("/a/", beforeAll(ggpht))
+	mux.HandleFunc("/ytc/", beforeAll(ggpht))
+
+	go requestPerSecond()
+	go requestPerMinute()
 
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,
@@ -179,7 +259,7 @@ func main() {
 		go srv.Serve(listener)
 		if *https {
 			fmt.Println("Serving HTTPS at port", string(port))
-			if err := srv.ListenAndServeTLS(cert, key); err != nil {
+			if err := srv.ListenAndServeTLS(tls_cert, tls_key); err != nil {
 				log.Fatal(err)
 			}
 		} else {

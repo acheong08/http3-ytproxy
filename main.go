@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -52,7 +53,7 @@ var h2client = &http.Client{
 }
 
 // https://github.com/lucas-clemente/quic-go/issues/2836
-var client = h2client
+var client *http.Client
 
 // Same user agent as Invidious
 var ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
@@ -84,10 +85,13 @@ var manifest_re = regexp.MustCompile(`(?m)URI="([^"]+)"`)
 
 var ipv6_only = false
 
+var version string
+
 type statusJson struct {
-	RequestCount      int64 `json:"requestCount"`
-	RequestPerSecond  int64 `json:"requestPerSecond"`
-	RequestPerMinute  int64 `json:"requestPerMinute"`
+	Version           string `json:"version"`
+	RequestCount      int64  `json:"requestCount"`
+	RequestPerSecond  int64  `json:"requestPerSecond"`
+	RequestPerMinute  int64  `json:"requestPerMinute"`
 	RequestsForbidden struct {
 		Videoplayback int64 `json:"videoplayback"`
 		Vi            int64 `json:"vi"`
@@ -96,6 +100,7 @@ type statusJson struct {
 }
 
 var stats_ = statusJson{
+	Version:          version + "-" + runtime.GOARCH,
 	RequestCount:     0,
 	RequestPerSecond: 0,
 	RequestPerMinute: 0,
@@ -186,14 +191,22 @@ func main() {
 	path_prefix = os.Getenv("PREFIX_PATH")
 	ipv6_only = os.Getenv("IPV6_ONLY") == "1"
 
-	var https = flag.Bool("https", false, "Use built-in https server")
+	var https = flag.Bool("https", false, "Use built-in https server (recommended)")
+	var h3 = flag.Bool("h3", false, "Use HTTP/3 for requests (high CPU usage)")
 	var ipv6 = flag.Bool("ipv6_only", false, "Only use ipv6 for requests")
+	flag.StringVar(&ua, "u", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36", "Set User-Agent (do not modify)")
 	flag.StringVar(&tls_cert, "tls-cert", "", "TLS Certificate path")
 	flag.StringVar(&tls_key, "tls-key", "", "TLS Certificate Key path")
 	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
 	flag.StringVar(&host, "l", "0.0.0.0", "Specify a listen address")
 	flag.Parse()
+
+	if *h3 {
+		client = h3client
+	} else {
+		client = h2client
+	}
 
 	if *https {
 		if len(tls_cert) <= 0 {

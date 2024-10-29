@@ -3,7 +3,6 @@
 .dockerignore
 Dockerfile
 LICENSE
-.git
 .github
 .gitignore
 cache

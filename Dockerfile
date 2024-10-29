@@ -2,8 +2,9 @@ FROM golang:alpine AS build
 
 WORKDIR /app/
 
-RUN apk add --no-cache build-base libwebp-dev
+RUN apk add --no-cache build-base libwebp-dev git
 
+COPY .git .git
 COPY . .
 
 RUN  --mount=type=cache,target=/root/.cache/go-build \

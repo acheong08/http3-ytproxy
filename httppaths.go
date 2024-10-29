@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 func videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	host := q.Get("host")
+	q.Del("host")
 
 	if len(host) <= 0 {
 		mvi := q.Get("mvi")
@@ -60,7 +62,10 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 
 	proxyURL.RawQuery = q.Encode()
 
-	request, err := http.NewRequest(req.Method, proxyURL.String(), nil)
+	// https://github.com/FreeTubeApp/FreeTube/blob/5a4cd981cdf2c2a20ab68b001746658fd0c6484e/src/renderer/components/ft-shaka-video-player/ft-shaka-video-player.js#L1097
+	body := []byte{0x78, 0} // protobuf body
+
+	request, err := http.NewRequest("POST", proxyURL.String(), bytes.NewReader(body))
 
 	copyHeaders(req.Header, request.Header, false)
 	request.Header.Set("User-Agent", ua)

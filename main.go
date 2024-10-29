@@ -154,7 +154,7 @@ func requestPerMinute() {
 	for {
 		time.Sleep(60 * time.Second)
 		current := stats_.RequestCount
-		stats_.RequestPerSecond = current - last
+		stats_.RequestPerMinute = current - last
 		last = current
 	}
 }

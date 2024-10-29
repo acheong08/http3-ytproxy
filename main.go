@@ -1,22 +1,19 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
-	"image/jpeg"
 	"io"
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
-	"strings"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/kolesa-team/go-webp/encoder"
-	"github.com/kolesa-team/go-webp/webp"
 	"github.com/quic-go/quic-go/http3"
 )
 
@@ -55,8 +52,11 @@ var h2client = &http.Client{
 	},
 }
 
-// user agent to use
-var ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+// https://github.com/lucas-clemente/quic-go/issues/2836
+var client = h2client
+
+// Same user agent as Invidious
+var ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 
 var allowed_hosts = []string{
 	"youtube.com",
@@ -64,8 +64,6 @@ var allowed_hosts = []string{
 	"ytimg.com",
 	"ggpht.com",
 	"googleusercontent.com",
-	"lbryplayer.xyz",
-	"odycdn.com",
 }
 
 var strip_headers = []string{
@@ -86,236 +84,31 @@ var path_prefix = ""
 var manifest_re = regexp.MustCompile(`(?m)URI="([^"]+)"`)
 
 var ipv6_only = false
-var disable_webp = false
 
-type requesthandler struct{}
+var reqs int64
+var reqs_Forbidden int64
+var mu sync.Mutex
 
-func (*requesthandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "*")
-	w.Header().Set("Access-Control-Max-Age", "1728000")
-
-	if req.Method == "OPTIONS" {
-		w.WriteHeader(200)
-		return
-	}
-
-	q := req.URL.Query()
-	host := q.Get("host")
-	q.Del("host")
-
-	if len(host) <= 0 {
-		host = q.Get("hls_chunk_host")
-	}
-
-	if len(host) <= 0 {
-		host = getHost(req.URL.EscapedPath())
-	}
-
-	// https://rr(mvi)---(mn).googlevideo.com
-	if len(host) <= 0 {
-		mvi := q.Get("mvi")
-		mn := strings.Split(q.Get("mn"), ",")
-		if len(mvi) <= 0 {
-			io.WriteString(w, "No `mvi` in query parameters")
-			return
-		}
-
-		if len(mn) <= 0 {
-			io.WriteString(w, "No `mn` in query parameters")
-			return
-		}
-		host = "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
-	}
-
-	parts := strings.Split(strings.ToLower(host), ".")
-
-	if len(parts) < 2 {
-		io.WriteString(w, "Invalid hostname.")
-		return
-	}
-
-	domain := parts[len(parts)-2] + "." + parts[len(parts)-1]
-
-	disallowed := true
-
-	for _, value := range allowed_hosts {
-		if domain == value {
-			disallowed = false
-			break
-		}
-	}
-
-	if disallowed {
-		io.WriteString(w, "Non YouTube domains are not supported.")
-		return
-	}
-
-	if req.Method != "GET" && req.Method != "HEAD" {
-		io.WriteString(w, "Only GET and HEAD requests are allowed.")
-		return
-	}
-
-	path := req.URL.EscapedPath()
-
-	path = strings.Replace(path, "/ggpht", "", 1)
-	path = strings.Replace(path, "/i/", "/", 1)
-
-	proxyURL, err := url.Parse("https://" + host + path)
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	proxyURL.RawQuery = q.Encode()
-
-	if strings.HasSuffix(proxyURL.EscapedPath(), "maxres.jpg") {
-		proxyURL.Path = getBestThumbnail(proxyURL.EscapedPath())
-	}
-
-	request, err := http.NewRequest(req.Method, proxyURL.String(), nil)
-
-	copyHeaders(req.Header, request.Header, false)
-	request.Header.Set("User-Agent", ua)
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	var client *http.Client
-
-	// https://github.com/lucas-clemente/quic-go/issues/2836
-	client = h2client
-
-	resp, err := client.Do(request)
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	defer resp.Body.Close()
-
-	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video") || strings.HasPrefix(resp.Header.Get("Content-Type"), "webp")
-	copyHeaders(resp.Header, w.Header(), NoRewrite)
-
-	w.WriteHeader(resp.StatusCode)
-
-	if req.Method == "GET" && (resp.Header.Get("Content-Type") == "application/x-mpegurl" || resp.Header.Get("Content-Type") == "application/vnd.apple.mpegurl") {
-		bytes, err := io.ReadAll(resp.Body)
-
-		if err != nil {
-			log.Panic(err)
-		}
-
-		lines := strings.Split(string(bytes), "\n")
-		reqUrl := resp.Request.URL
-		for i := 0; i < len(lines); i++ {
-			line := lines[i]
-			if !strings.HasPrefix(line, "https://") && (strings.HasSuffix(line, ".m3u8") || strings.HasSuffix(line, ".ts")) {
-				path := reqUrl.EscapedPath()
-				path = path[0 : strings.LastIndex(path, "/")+1]
-				line = "https://" + reqUrl.Hostname() + path + line
-			}
-			if strings.HasPrefix(line, "https://") {
-				lines[i] = RelativeUrl(line)
-			}
-
-			if manifest_re.MatchString(line) {
-				url := manifest_re.FindStringSubmatch(line)[1]
-				lines[i] = strings.Replace(line, url, RelativeUrl(url), 1)
-			}
-		}
-
-		io.WriteString(w, strings.Join(lines, "\n"))
-	} else if !disable_webp && resp.Header.Get("Content-Type") == "image/jpeg" {
-		img, err := jpeg.Decode(resp.Body)
-
-		if err != nil {
-			log.Panic(err)
-		}
-
-		options, _ := encoder.NewLossyEncoderOptions(encoder.PresetDefault, 85)
-
-		w.Header().Set("Content-Type", "image/webp")
-
-		webp.Encode(w, img, options)
-	} else {
-		io.Copy(w, resp.Body)
-	}
+type statusJson struct {
+	RequestCount      int64 `json:"requestCount"`
+	RequestsForbidden int64 `json:"requestsForbidden"`
 }
 
-func copyHeaders(from http.Header, to http.Header, length bool) {
-	// Loop over header names
-outer:
-	for name, values := range from {
-		for _, header := range strip_headers {
-			if name == header {
-				continue outer
-			}
-		}
-		if (name != "Content-Length" || length) && !strings.HasPrefix(name, "Access-Control") {
-			// Loop over all values for the name.
-			for _, value := range values {
-				if strings.Contains(value, "jpeg") {
-					continue
-				}
-				to.Set(name, value)
-			}
-		}
-	}
+func root(w http.ResponseWriter, req *http.Request) {
+	io.WriteString(w, "HTTP youtube proxy for https://inv.nadeko.net\n")
 }
 
-func getHost(path string) (host string) {
-
-	host = ""
-
-	if strings.HasPrefix(path, "/vi/") || strings.HasPrefix(path, "/vi_webp/") || strings.HasPrefix(path, "/sb/") {
-		host = "i.ytimg.com"
+func status(w http.ResponseWriter, req *http.Request) {
+	response := statusJson{
+		RequestCount:      reqs,
+		RequestsForbidden: reqs_Forbidden,
 	}
 
-	if strings.HasPrefix(path, "/ggpht/") {
-		host = "yt3.ggpht.com"
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-
-	if strings.HasPrefix(path, "/a/") || strings.HasPrefix(path, "/ytc/") {
-		host = "yt3.ggpht.com"
-	}
-
-	if strings.Contains(path, "/host/") {
-		path = path[(strings.Index(path, "/host/") + 6):]
-		host = path[0:strings.Index(path, "/")]
-	}
-
-	return host
-}
-
-func getBestThumbnail(path string) (newpath string) {
-
-	formats := [4]string{"maxresdefault.jpg", "sddefault.jpg", "hqdefault.jpg", "mqdefault.jpg"}
-
-	for _, format := range formats {
-		newpath = strings.Replace(path, "maxres.jpg", format, 1)
-		url := "https://i.ytimg.com" + newpath
-		resp, _ := h2client.Head(url)
-		if resp.StatusCode == 200 {
-			return newpath
-		}
-	}
-
-	return strings.Replace(path, "maxres.jpg", "mqdefault.jpg", 1)
-}
-
-func RelativeUrl(in string) (newurl string) {
-	segment_url, err := url.Parse(in)
-	if err != nil {
-		log.Panic(err)
-	}
-	segment_query := segment_url.Query()
-	segment_query.Set("host", segment_url.Hostname())
-	segment_url.RawQuery = segment_query.Encode()
-	segment_url.Path = path_prefix + segment_url.Path
-	return segment_url.RequestURI()
 }
 
 func main() {
@@ -328,16 +121,7 @@ func main() {
 	path_prefix = os.Getenv("PREFIX_PATH")
 
 	ipv6_only = os.Getenv("IPV6_ONLY") == "1"
-	disable_webp = os.Getenv("DISABLE_WEBP") == "1"
-
-	// if _, err := os.Stat("socket"); os.IsNotExist(err) {
-	// 	fmt.Println("socket folder doesn't exists, creating one now.")
-	// 	err = os.Mkdir("socket", 0777)
-	// 	if err != nil {
-	// 		fmt.Println("Failed to create folder, error: ")
-	// 		log.Fatal(err)
-	// 	}
-	// }
+	// disable_webp = os.Getenv("DISABLE_WEBP") == "1"
 
 	flag.StringVar(&cert, "tls-cert", "", "TLS Certificate path")
 	flag.StringVar(&key, "tls-key", "", "TLS Certificate Key path")
@@ -350,16 +134,29 @@ func main() {
 
 	ipv6_only = *ipv6
 
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", root)
+	mux.HandleFunc("/status", status)
+	mux.HandleFunc("/videoplayback", videoplayback)
+	mux.HandleFunc("/vi/", vi)
+	mux.HandleFunc("/vi_webp/", vi)
+	mux.HandleFunc("/sb/", vi)
+	mux.HandleFunc("/ggpht/", ggpht)
+	mux.HandleFunc("/a/", ggpht)
+	mux.HandleFunc("/ytc/", ggpht)
+
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
 		Addr:         string(host) + ":" + string(port),
-		Handler:      &requesthandler{},
+		Handler:      mux,
 	}
 
 	socket := string(sock)
 	syscall.Unlink(socket)
 	listener, err := net.Listen("unix", socket)
+	fmt.Println("Unix socket listening at:", string(sock))
 
 	if err != nil {
 		fmt.Println("Failed to bind to UDS, please check the socket name, falling back to TCP/IP")
@@ -381,12 +178,12 @@ func main() {
 		}
 		go srv.Serve(listener)
 		if *https {
+			fmt.Println("Serving HTTPS at port", string(port))
 			if err := srv.ListenAndServeTLS(cert, key); err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println("Serving HTTPS")
 		} else {
-			fmt.Println("Serving HTTP")
+			fmt.Println("Serving HTTP at port", string(port))
 			srv.ListenAndServe()
 		}
 	}

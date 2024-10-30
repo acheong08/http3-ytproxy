@@ -15,7 +15,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/conduitio/bwlimit"
 	"github.com/quic-go/quic-go/http3"
+)
+
+var (
+	wl = flag.Int("w", 8000, "Write limit in Kbps")
+	rl = flag.Int("r", 8000, "Read limit in Kbps")
 )
 
 var h3client = &http.Client{
@@ -194,7 +200,6 @@ func main() {
 	var https = flag.Bool("https", false, "Use built-in https server (recommended)")
 	var h3 = flag.Bool("h3", false, "Use HTTP/3 for requests (high CPU usage)")
 	var ipv6 = flag.Bool("ipv6_only", false, "Only use ipv6 for requests")
-	flag.StringVar(&ua, "u", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36", "Set User-Agent (do not modify)")
 	flag.StringVar(&tls_cert, "tls-cert", "", "TLS Certificate path")
 	flag.StringVar(&tls_key, "tls-key", "", "TLS Certificate Key path")
 	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
@@ -239,45 +244,55 @@ func main() {
 	go requestPerSecond()
 	go requestPerMinute()
 
+	ln, err := net.Listen("tcp", host+":"+port)
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+
+	// 1Kbit = 125Bytes
+	var (
+		writeLimit = bwlimit.Byte(*wl) * bwlimit.Byte(125)
+		readLimit  = bwlimit.Byte(*rl) * bwlimit.Byte(125)
+	)
+
+	ln = bwlimit.NewListener(ln, writeLimit, readLimit)
+
 	srv := &http.Server{
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
-		Addr:         string(host) + ":" + string(port),
 		Handler:      mux,
 	}
 
-	socket := string(sock)
-	syscall.Unlink(socket)
-	listener, err := net.Listen("unix", socket)
-	fmt.Println("Unix socket listening at:", string(sock))
+	syscall.Unlink(sock)
+	socket_listener, err := net.Listen("unix", sock)
 
 	if err != nil {
-		fmt.Println("Failed to bind to UDS, please check the socket name, falling back to TCP/IP")
+		fmt.Println("Failed to bind to UDS, please check the socket name")
 		fmt.Println(err.Error())
-		err := srv.ListenAndServe()
-		if err != nil {
-			fmt.Println("Cannot bind to port", string(port), "Error:", err)
-			fmt.Println("Please try changing the port number")
-		}
 	} else {
-		defer listener.Close()
+		defer socket_listener.Close()
 		// To allow everyone to access the socket
-		err = os.Chmod(socket, 0777)
+		err = os.Chmod(sock, 0777)
 		if err != nil {
 			fmt.Println("Error setting permissions:", err)
 			return
 		} else {
 			fmt.Println("Setting socket permissions to 777")
 		}
-		go srv.Serve(listener)
+
+		go srv.Serve(socket_listener)
+		fmt.Println("Unix socket listening at:", string(sock))
+
 		if *https {
 			fmt.Println("Serving HTTPS at port", string(port))
-			if err := srv.ListenAndServeTLS(tls_cert, tls_key); err != nil {
+			if err := srv.ServeTLS(ln, tls_cert, tls_key); err != nil {
 				log.Fatal(err)
 			}
 		} else {
 			fmt.Println("Serving HTTP at port", string(port))
-			srv.ListenAndServe()
+			if err := srv.Serve(ln); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 }

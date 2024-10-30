@@ -66,7 +66,6 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	body := []byte{0x78, 0} // protobuf body
 
 	request, err := http.NewRequest("POST", proxyURL.String(), bytes.NewReader(body))
-
 	copyHeaders(req.Header, request.Header, false)
 	request.Header.Set("User-Agent", ua)
 	if err != nil {

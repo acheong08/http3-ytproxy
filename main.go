@@ -174,6 +174,10 @@ func beforeAll(next http.HandlerFunc) http.HandlerFunc {
 
 		atomic.AddInt64(&stats_.RequestCount, 1)
 
+		// To look like more like a browser
+		req.Header.Add("Origin", "https://www.youtube.com")
+		req.Header.Add("Referer", "https://www.youtube.com/")
+
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "*")
 		w.Header().Set("Access-Control-Max-Age", "1728000")

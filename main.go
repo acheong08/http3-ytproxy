@@ -167,6 +167,8 @@ func requestPerMinute() {
 
 func beforeAll(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
+		defer panicHandler(w)
+
 		if req.Method != "GET" && req.Method != "HEAD" {
 			io.WriteString(w, "Only GET and HEAD requests are allowed.")
 			return

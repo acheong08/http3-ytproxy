@@ -55,3 +55,10 @@ func RelativeUrl(in string) (newurl string) {
 	segment_url.Path = path_prefix + segment_url.Path
 	return segment_url.RequestURI()
 }
+
+func panicHandler(w http.ResponseWriter) {
+	if r := recover(); r != nil {
+		log.Printf("Panic: %v", r)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}

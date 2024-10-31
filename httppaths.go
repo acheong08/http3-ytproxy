@@ -77,7 +77,6 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 		log.Panic(err)
 	}
 
-	w.WriteHeader(resp.StatusCode)
 	if resp.StatusCode == 403 {
 		atomic.AddInt64(&stats_.RequestsForbidden.Videoplayback, 1)
 		io.WriteString(w, "Forbidden 403\n")
@@ -89,6 +88,8 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 
 	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
 	copyHeaders(resp.Header, w.Header(), NoRewrite)
+
+	w.WriteHeader(resp.StatusCode)
 
 	if req.Method == "GET" && (resp.Header.Get("Content-Type") == "application/x-mpegurl" || resp.Header.Get("Content-Type") == "application/vnd.apple.mpegurl") {
 		bytes, err := io.ReadAll(resp.Body)

@@ -20,11 +20,13 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 		mn := strings.Split(q.Get("mn"), ",")
 
 		if len(mvi) <= 0 {
+			w.WriteHeader(400)
 			io.WriteString(w, "No `mvi` in query parameters")
 			return
 		}
 
 		if len(mn) <= 0 {
+			w.WriteHeader(400)
 			io.WriteString(w, "No `mn` in query parameters")
 			return
 		}
@@ -35,6 +37,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	parts := strings.Split(strings.ToLower(host), ".")
 
 	if len(parts) < 2 {
+		w.WriteHeader(400)
 		io.WriteString(w, "Invalid hostname.")
 		return
 	}
@@ -49,6 +52,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if disallowed {
+		w.WriteHeader(401)
 		io.WriteString(w, "Non YouTube domains are not supported.")
 		return
 	}

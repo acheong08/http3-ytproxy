@@ -96,6 +96,8 @@ var version string
 
 var h3s bool
 
+var programInit = time.Now()
+
 type ConnectionWatcher struct {
 	totalEstablished int64
 	established      int64
@@ -134,14 +136,15 @@ func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) 
 var cw ConnectionWatcher
 
 type statusJson struct {
-	Version                string `json:"version"`
-	RequestCount           int64  `json:"requestCount"`
-	RequestPerSecond       int64  `json:"requestPerSecond"`
-	RequestPerMinute       int64  `json:"requestPerMinute"`
-	TotalEstablished       int64  `json:"totalEstablished"`
-	EstablishedConnections int64  `json:"establishedConnections"`
-	ActiveConnections      int64  `json:"activeConnections"`
-	IdleConnections        int64  `json:"idleConnections"`
+	Version                string        `json:"version"`
+	Uptime                 time.Duration `json:"uptime"`
+	RequestCount           int64         `json:"requestCount"`
+	RequestPerSecond       int64         `json:"requestPerSecond"`
+	RequestPerMinute       int64         `json:"requestPerMinute"`
+	TotalEstablished       int64         `json:"totalEstablished"`
+	EstablishedConnections int64         `json:"establishedConnections"`
+	ActiveConnections      int64         `json:"activeConnections"`
+	IdleConnections        int64         `json:"idleConnections"`
 	RequestsForbidden      struct {
 		Videoplayback int64 `json:"videoplayback"`
 		Vi            int64 `json:"vi"`
@@ -151,6 +154,7 @@ type statusJson struct {
 
 var stats_ = statusJson{
 	Version:                version + "-" + runtime.GOARCH,
+	Uptime:                 0,
 	RequestCount:           0,
 	RequestPerSecond:       0,
 	RequestPerMinute:       0,
@@ -182,6 +186,7 @@ func root(w http.ResponseWriter, req *http.Request) {
 
 func stats(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	stats_.Uptime = time.Duration(time.Since(programInit).Seconds())
 	stats_.TotalEstablished = int64(cw.totalEstablished)
 	stats_.EstablishedConnections = int64(cw.established)
 	// stats_.ActiveConnections = int64(cw.active)

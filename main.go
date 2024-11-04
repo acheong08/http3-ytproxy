@@ -96,12 +96,53 @@ var version string
 
 var h3s bool
 
+type ConnectionWatcher struct {
+	totalEstablished int64
+	established      int64
+	active           int64
+	idle             int64
+}
+
+// https://stackoverflow.com/questions/51317122/how-to-get-number-of-idle-and-active-connections-in-go
+
+// OnStateChange records open connections in response to connection
+// state changes. Set net/http Server.ConnState to this method
+// as value.
+func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) {
+	switch state {
+	case http.StateNew:
+		atomic.AddInt64(&cw.established, 1)
+		atomic.AddInt64(&cw.totalEstablished, 1)
+	// case http.StateActive:
+	// 	atomic.AddInt64(&cw.active, 1)
+	case http.StateClosed, http.StateHijacked:
+		atomic.AddInt64(&cw.established, -1)
+	}
+}
+
+// // Count returns the number of connections at the time
+// // the call.
+// func (cw *ConnectionWatcher) Count() int {
+// 	return int(atomic.LoadInt64(&cw.n))
+// }
+
+// // Add adds c to the number of active connections.
+// func (cw *ConnectionWatcher) Add(c int64) {
+// 	atomic.AddInt64(&cw.n, c)
+// }
+
+var cw ConnectionWatcher
+
 type statusJson struct {
-	Version           string `json:"version"`
-	RequestCount      int64  `json:"requestCount"`
-	RequestPerSecond  int64  `json:"requestPerSecond"`
-	RequestPerMinute  int64  `json:"requestPerMinute"`
-	RequestsForbidden struct {
+	Version                string `json:"version"`
+	RequestCount           int64  `json:"requestCount"`
+	RequestPerSecond       int64  `json:"requestPerSecond"`
+	RequestPerMinute       int64  `json:"requestPerMinute"`
+	TotalEstablished       int64  `json:"totalEstablished"`
+	EstablishedConnections int64  `json:"establishedConnections"`
+	ActiveConnections      int64  `json:"activeConnections"`
+	IdleConnections        int64  `json:"idleConnections"`
+	RequestsForbidden      struct {
 		Videoplayback int64 `json:"videoplayback"`
 		Vi            int64 `json:"vi"`
 		Ggpht         int64 `json:"ggpht"`
@@ -109,10 +150,14 @@ type statusJson struct {
 }
 
 var stats_ = statusJson{
-	Version:          version + "-" + runtime.GOARCH,
-	RequestCount:     0,
-	RequestPerSecond: 0,
-	RequestPerMinute: 0,
+	Version:                version + "-" + runtime.GOARCH,
+	RequestCount:           0,
+	RequestPerSecond:       0,
+	RequestPerMinute:       0,
+	TotalEstablished:       0,
+	EstablishedConnections: 0,
+	ActiveConnections:      0,
+	IdleConnections:        0,
 	RequestsForbidden: struct {
 		Videoplayback int64 `json:"videoplayback"`
 		Vi            int64 `json:"vi"`
@@ -137,6 +182,10 @@ func root(w http.ResponseWriter, req *http.Request) {
 
 func stats(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	stats_.TotalEstablished = int64(cw.totalEstablished)
+	stats_.EstablishedConnections = int64(cw.established)
+	// stats_.ActiveConnections = int64(cw.active)
+	// stats_.IdleConnections = int64(cw.idle)
 
 	if err := json.NewEncoder(w).Encode(stats_); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -282,6 +331,7 @@ func main() {
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
+		ConnState:    cw.OnStateChange,
 	}
 
 	srvh3 := &http3.Server{

@@ -6,12 +6,26 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 func videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
+	expire, err := strconv.ParseInt(q.Get("expire"), 10, 64)
+	if err != nil {
+		w.WriteHeader(500)
+	}
+
+	// Prevent the process of already expired playbacks
+	// since they will return 403 from googlevideo servers.
+	if (expire - time.Now().Unix()) <= 0 {
+		w.WriteHeader(403)
+		return
+	}
+
 	host := q.Get("host")
 	q.Del("host")
 

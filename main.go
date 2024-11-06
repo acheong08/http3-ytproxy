@@ -196,28 +196,28 @@ type Metrics struct {
 
 var metrics = Metrics{
 	Uptime: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "uptime",
+		Name: "http3_ytproxy_uptime",
 	}),
 	RequestCount: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "request_count",
+		Name: "http3_ytproxy_request_count",
 	}),
 	RequestPerSecond: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "request_per_second",
+		Name: "http3_ytproxy_request_per_second",
 	}),
 	RequestPerMinute: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "request_per_minute",
+		Name: "http3_ytproxy_request_per_minute",
 	}),
 	TotalConnEstablished: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "total_conn_established",
+		Name: "http3_ytproxy_total_conn_established",
 	}),
 	EstablishedConnections: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "established_conns",
+		Name: "http3_ytproxy_established_conns",
 	}),
 	ActiveConnections: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "active_conns",
+		Name: "http3_ytproxy_active_conns",
 	}),
 	IdleConnections: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "idle_conns",
+		Name: "http3_ytproxy_idle_conns",
 	}),
 
 	RequestForbidden: struct {
@@ -226,13 +226,13 @@ var metrics = Metrics{
 		Ggpht         prometheus.Counter
 	}{
 		Videoplayback: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "request_forbidden_videoplayback",
+			Name: "http3_ytproxy_request_forbidden_videoplayback",
 		}),
 		Vi: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "request_forbidden_vi",
+			Name: "http3_ytproxy_request_forbidden_vi",
 		}),
 		Ggpht: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "request_forbidden_ggpht",
+			Name: "http3_ytproxy_request_forbidden_ggpht",
 		}),
 	},
 }

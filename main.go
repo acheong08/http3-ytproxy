@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/conduitio/bwlimit"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
@@ -113,12 +115,15 @@ type ConnectionWatcher struct {
 func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) {
 	switch state {
 	case http.StateNew:
-		atomic.AddInt64(&cw.established, 1)
-		atomic.AddInt64(&cw.totalEstablished, 1)
+		atomic.AddInt64(&stats_.EstablishedConnections, 1)
+		metrics.EstablishedConnections.Inc()
+		atomic.AddInt64(&stats_.TotalConnEstablished, 1)
+		metrics.TotalConnEstablished.Inc()
 	// case http.StateActive:
 	// 	atomic.AddInt64(&cw.active, 1)
 	case http.StateClosed, http.StateHijacked:
-		atomic.AddInt64(&cw.established, -1)
+		atomic.AddInt64(&stats_.EstablishedConnections, -1)
+		metrics.EstablishedConnections.Dec()
 	}
 }
 
@@ -141,7 +146,7 @@ type statusJson struct {
 	RequestCount           int64         `json:"requestCount"`
 	RequestPerSecond       int64         `json:"requestPerSecond"`
 	RequestPerMinute       int64         `json:"requestPerMinute"`
-	TotalEstablished       int64         `json:"totalEstablished"`
+	TotalConnEstablished   int64         `json:"totalEstablished"`
 	EstablishedConnections int64         `json:"establishedConnections"`
 	ActiveConnections      int64         `json:"activeConnections"`
 	IdleConnections        int64         `json:"idleConnections"`
@@ -158,7 +163,7 @@ var stats_ = statusJson{
 	RequestCount:           0,
 	RequestPerSecond:       0,
 	RequestPerMinute:       0,
-	TotalEstablished:       0,
+	TotalConnEstablished:   0,
 	EstablishedConnections: 0,
 	ActiveConnections:      0,
 	IdleConnections:        0,
@@ -173,6 +178,65 @@ var stats_ = statusJson{
 	},
 }
 
+type Metrics struct {
+	Uptime                 prometheus.Gauge
+	RequestCount           prometheus.Counter
+	RequestPerSecond       prometheus.Gauge
+	RequestPerMinute       prometheus.Gauge
+	TotalConnEstablished   prometheus.Counter
+	EstablishedConnections prometheus.Gauge
+	ActiveConnections      prometheus.Gauge
+	IdleConnections        prometheus.Gauge
+	RequestForbidden       struct {
+		Videoplayback prometheus.Counter
+		Vi            prometheus.Counter
+		Ggpht         prometheus.Counter
+	}
+}
+
+var metrics = Metrics{
+	Uptime: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "uptime",
+	}),
+	RequestCount: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "request_count",
+	}),
+	RequestPerSecond: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "request_per_second",
+	}),
+	RequestPerMinute: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "request_per_minute",
+	}),
+	TotalConnEstablished: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "total_conn_established",
+	}),
+	EstablishedConnections: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "established_conns",
+	}),
+	ActiveConnections: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "active_conns",
+	}),
+	IdleConnections: prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "idle_conns",
+	}),
+
+	RequestForbidden: struct {
+		Videoplayback prometheus.Counter
+		Vi            prometheus.Counter
+		Ggpht         prometheus.Counter
+	}{
+		Videoplayback: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "request_forbidden_videoplayback",
+		}),
+		Vi: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "request_forbidden_vi",
+		}),
+		Ggpht: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "request_forbidden_ggpht",
+		}),
+	},
+}
+
 func root(w http.ResponseWriter, req *http.Request) {
 	const msg = `
 	HTTP youtube proxy for https://inv.nadeko.net
@@ -184,11 +248,19 @@ func root(w http.ResponseWriter, req *http.Request) {
 	io.WriteString(w, msg)
 }
 
+// CustomHandler wraps the default promhttp.Handler with custom logic
+func metricsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		metrics.Uptime.Set(float64(time.Duration(time.Since(programInit).Seconds())))
+		promhttp.Handler().ServeHTTP(w, req)
+	})
+}
+
 func stats(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	stats_.Uptime = time.Duration(time.Since(programInit).Seconds())
-	stats_.TotalEstablished = int64(cw.totalEstablished)
-	stats_.EstablishedConnections = int64(cw.established)
+	// stats_.TotalEstablished = int64(cw.totalEstablished)
+	// stats_.EstablishedConnections = int64(cw.established)
 	// stats_.ActiveConnections = int64(cw.active)
 	// stats_.IdleConnections = int64(cw.idle)
 
@@ -208,6 +280,7 @@ func requestPerSecond() {
 		time.Sleep(1 * time.Second)
 		current := stats_.RequestCount
 		stats_.RequestPerSecond = current - last
+		metrics.RequestPerSecond.Set(float64(stats_.RequestPerSecond))
 		last = current
 	}
 }
@@ -218,6 +291,7 @@ func requestPerMinute() {
 		time.Sleep(60 * time.Second)
 		current := stats_.RequestCount
 		stats_.RequestPerMinute = current - last
+		metrics.RequestPerMinute.Set(float64(stats_.RequestPerMinute))
 		last = current
 	}
 }
@@ -249,6 +323,7 @@ func beforeAll(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Access-Control-Max-Age", "1728000")
 
 		atomic.AddInt64(&stats_.RequestCount, 1)
+		metrics.RequestCount.Inc()
 		next(w, req)
 	}
 }
@@ -306,6 +381,20 @@ func main() {
 	mux.HandleFunc("/", root)
 	mux.HandleFunc("/health", health)
 	mux.HandleFunc("/stats", stats)
+
+	prometheus.MustRegister(metrics.Uptime)
+	prometheus.MustRegister(metrics.ActiveConnections)
+	prometheus.MustRegister(metrics.IdleConnections)
+	prometheus.MustRegister(metrics.EstablishedConnections)
+	prometheus.MustRegister(metrics.TotalConnEstablished)
+	prometheus.MustRegister(metrics.RequestCount)
+	prometheus.MustRegister(metrics.RequestPerSecond)
+	prometheus.MustRegister(metrics.RequestPerMinute)
+	prometheus.MustRegister(metrics.RequestForbidden.Videoplayback)
+	prometheus.MustRegister(metrics.RequestForbidden.Vi)
+	prometheus.MustRegister(metrics.RequestForbidden.Ggpht)
+
+	mux.Handle("/metrics", metricsHandler())
 
 	mux.HandleFunc("/videoplayback", beforeAll(videoplayback))
 	mux.HandleFunc("/vi/", beforeAll(vi))

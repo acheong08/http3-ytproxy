@@ -97,6 +97,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 
 	if resp.StatusCode == 403 {
 		atomic.AddInt64(&stats_.RequestsForbidden.Videoplayback, 1)
+		metrics.RequestForbidden.Videoplayback.Inc()
 		io.WriteString(w, "Forbidden 403\n")
 		io.WriteString(w, "Maybe Youtube blocked the IP of this proxy?\n")
 		return
@@ -178,6 +179,7 @@ func vi(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	if resp.StatusCode == 403 {
 		atomic.AddInt64(&stats_.RequestsForbidden.Vi, 1)
+		metrics.RequestForbidden.Vi.Inc()
 		io.WriteString(w, "Forbidden 403")
 		return
 	}
@@ -217,6 +219,7 @@ func ggpht(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	if resp.StatusCode == 403 {
 		atomic.AddInt64(&stats_.RequestsForbidden.Ggpht, 1)
+		metrics.RequestForbidden.Ggpht.Inc()
 		io.WriteString(w, "Forbidden 403")
 		return
 	}

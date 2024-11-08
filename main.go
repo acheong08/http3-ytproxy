@@ -321,6 +321,10 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		defer panicHandler(w)
 
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Max-Age", "1728000")
+
 		// To prevent accessing from the bare IP address
 		if req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil {
 			w.WriteHeader(444)
@@ -344,10 +348,6 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 		// To look like more like a browser
 		req.Header.Add("Origin", "https://www.youtube.com")
 		req.Header.Add("Referer", "https://www.youtube.com/")
-
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "*")
-		w.Header().Set("Access-Control-Max-Age", "1728000")
 
 		atomic.AddInt64(&stats_.RequestCount, 1)
 		metrics.RequestCount.Inc()

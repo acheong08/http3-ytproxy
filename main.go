@@ -321,13 +321,24 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		defer panicHandler(w)
 
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "*")
-		w.Header().Set("Access-Control-Max-Age", "1728000")
-
 		// To prevent accessing from the bare IP address
 		if req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil {
 			w.WriteHeader(444)
+			return
+		}
+
+		// Only allow requests from origin inv.nadeko.net
+		// Why? Because I don't want anyone to use this proxy for their own purposes.
+		// Hardcoded because I'm lazy lol!
+		origin := req.URL.Query().Get("Origin")
+		if origin == "https://inv.nadeko.net" || origin == "https://materialious.nadeko.net" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			w.Header().Set("Access-Control-Max-Age", "1728000")
+		} else {
+			w.WriteHeader(401)
+			io.WriteString(w, "Only requests coming from inv.nadeko.net are allowed.")
 			return
 		}
 
@@ -341,6 +352,7 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if req.Method != "GET" && req.Method != "HEAD" {
+			w.WriteHeader(405)
 			io.WriteString(w, "Only GET and HEAD requests are allowed.")
 			return
 		}

@@ -330,7 +330,7 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 		// Only allow requests from origin inv.nadeko.net
 		// Why? Because I don't want anyone to use this proxy for their own purposes.
 		// Hardcoded because I'm lazy lol!
-		origin := req.URL.Query().Get("Origin")
+		origin := req.Header.Get("Origin")
 		if origin == "https://inv.nadeko.net" || origin == "https://materialious.nadeko.net" {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Headers", "*")

@@ -242,8 +242,8 @@ func root(w http.ResponseWriter, req *http.Request) {
 	const msg = `
 	HTTP youtube proxy for https://inv.nadeko.net
 	https://git.nadeko.net/Fijxu/http3-ytproxy
-	
-	Routes: 
+
+	Routes:
 	/stats
 	/health`
 	io.WriteString(w, msg)
@@ -336,6 +336,7 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Access-Control-Allow-Headers", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
 		w.Header().Set("Access-Control-Max-Age", "1728000")
+		w.Header().Set("Strict-Transport-Security", "max-age=86400")
 		// } else {
 		// 	w.WriteHeader(401)
 		// 	io.WriteString(w, "Only requests coming from inv.nadeko.net are allowed.")

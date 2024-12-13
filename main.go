@@ -3,8 +3,8 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -379,18 +379,23 @@ func main() {
 	var https bool
 	var h3c bool
 
-	ua = os.Getenv("USER_AGENT")
 	https = os.Getenv("HTTPS") == "1"
 	h3c = os.Getenv("H3C") == "1"
 	h3s = os.Getenv("H3S") == "1"
 	ipv6 = os.Getenv("IPV6_ONLY") == "1"
+	// ua = os.Getenv("USER_AGENT")
+	// tls_cert = os.Getenv("TLS_CERT")
+	// tls_key = os.Getenv("TLS_KEY")
+	// sock = os.Getenv("SOCK_PATH")
+	// port = os.Getenv("PORT")
+	// host = os.Getenv("HOST")
 
 	flag.BoolVar(&https, "https", false, "Use built-in https server (recommended)")
 	flag.BoolVar(&h3s, "h3c", false, "Use HTTP/3 for client requests (high CPU usage)")
-	flag.BoolVar(&h3s, "h3s", true, "Use HTTP/3 for server requests")
+	flag.BoolVar(&h3s, "h3s", true, "Use HTTP/3 for server requests, (requires HTTPS)")
 	flag.BoolVar(&ipv6_only, "ipv6_only", false, "Only use ipv6 for requests")
-	flag.StringVar(&tls_cert, "tls-cert", "", "TLS Certificate path")
-	flag.StringVar(&tls_key, "tls-key", "", "TLS Certificate Key path")
+	flag.StringVar(&tls_cert, "tls-cert", "/data/cert.pem", "TLS Certificate path")
+	flag.StringVar(&tls_key, "tls-key", "/data/key.key", "TLS Certificate Key path")
 	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
 	flag.StringVar(&port, "p", "8080", "Specify a port number")
 	flag.StringVar(&host, "l", "0.0.0.0", "Specify a listen address")
@@ -404,13 +409,11 @@ func main() {
 
 	if https {
 		if len(tls_cert) <= 0 {
-			fmt.Println("tls-cert argument is missing, you need a TLS certificate for HTTPS")
-			os.Exit(1)
+			log.Fatal("tls-cert argument is missing, you need a TLS certificate for HTTPS")
 		}
 
 		if len(tls_key) <= 0 {
-			fmt.Println("tls-key argument is missing, you need a TLS key for HTTPS")
-			os.Exit(1)
+			log.Fatal("tls-key argument is missing, you need a TLS key for HTTPS")
 		}
 	}
 
@@ -487,40 +490,47 @@ func main() {
 	socket_listener, err := net.Listen("unix", sock)
 
 	if err != nil {
-		fmt.Println("Failed to bind to UDS, please check the socket name")
-		fmt.Println(err.Error())
+		log.Println("Failed to bind to UDS, please check the socket name", err.Error())
 	} else {
 		defer socket_listener.Close()
 		// To allow everyone to access the socket
 		err = os.Chmod(sock, 0777)
 		if err != nil {
-			fmt.Println("Error setting permissions:", err)
+			log.Println("Failed to set socket permissions to 777:", err.Error())
 			return
 		} else {
-			fmt.Println("Setting socket permissions to 777")
+			log.Println("Setting socket permissions to 777")
 		}
 
 		go srv.Serve(socket_listener)
-		fmt.Println("Unix socket listening at:", string(sock))
+		log.Println("Unix socket listening at:", string(sock))
 
 		if https {
-			fmt.Println("Serving HTTPS at port", string(port))
+			if _, err := os.Open(tls_cert); errors.Is(err, os.ErrNotExist) {
+				log.Panicf("Certificate file does not exist at path '%s'", tls_cert)
+			}
+
+			if _, err := os.Open(tls_key); errors.Is(err, os.ErrNotExist) {
+				log.Panicf("Key file does not exist at path '%s'", tls_key)
+			}
+
+			log.Println("Serving HTTPS at port", string(port)+"/tcp")
 			go func() {
 				if err := srv.ServeTLS(ln, tls_cert, tls_key); err != nil {
-					log.Fatal(err)
+					log.Fatal("Failed to server HTTP/2", err.Error())
 				}
 			}()
 			if h3s {
-				fmt.Println("Serving HTTPS via QUIC at port", string(port))
+				log.Println("Serving HTTP/3 (HTTPS) via QUIC at port", string(port)+"/udp")
 				go func() {
 					if err := srvh3.ListenAndServeTLS(tls_cert, tls_key); err != nil {
-						log.Fatal(err)
+						log.Fatal("Failed to serve HTTP/3:", err.Error())
 					}
 				}()
 			}
 			select {}
 		} else {
-			fmt.Println("Serving HTTP at port", string(port))
+			log.Println("Serving HTTP at port", string(port))
 			if err := srv.Serve(ln); err != nil {
 				log.Fatal(err)
 			}

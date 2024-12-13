@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -11,6 +12,16 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+func forbiddenChecker(resp *http.Response, w http.ResponseWriter) error {
+	if resp.StatusCode == 403 {
+		w.WriteHeader(403)
+		io.WriteString(w, "Forbidden 403\n")
+		io.WriteString(w, "Maybe Youtube blocked the IP of this proxy?\n")
+		return fmt.Errorf("%s returned %d", resp.Request.Host, resp.StatusCode)
+	}
+	return nil
+}
 
 func videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
@@ -95,11 +106,9 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 		log.Panic(err)
 	}
 
-	if resp.StatusCode == 403 {
+	if err := forbiddenChecker(resp, w); err != nil {
 		atomic.AddInt64(&stats_.RequestsForbidden.Videoplayback, 1)
 		metrics.RequestForbidden.Videoplayback.Inc()
-		io.WriteString(w, "Forbidden 403\n")
-		io.WriteString(w, "Maybe Youtube blocked the IP of this proxy?\n")
 		return
 	}
 
@@ -176,11 +185,9 @@ func vi(w http.ResponseWriter, req *http.Request) {
 		log.Panic(err)
 	}
 
-	w.WriteHeader(resp.StatusCode)
-	if resp.StatusCode == 403 {
+	if err := forbiddenChecker(resp, w); err != nil {
 		atomic.AddInt64(&stats_.RequestsForbidden.Vi, 1)
 		metrics.RequestForbidden.Vi.Inc()
-		io.WriteString(w, "Forbidden 403")
 		return
 	}
 
@@ -188,6 +195,7 @@ func vi(w http.ResponseWriter, req *http.Request) {
 
 	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
 	copyHeaders(resp.Header, w.Header(), NoRewrite)
+	w.WriteHeader(resp.StatusCode)
 
 	io.Copy(w, resp.Body)
 }
@@ -216,11 +224,9 @@ func ggpht(w http.ResponseWriter, req *http.Request) {
 		log.Panic(err)
 	}
 
-	w.WriteHeader(resp.StatusCode)
-	if resp.StatusCode == 403 {
+	if err := forbiddenChecker(resp, w); err != nil {
 		atomic.AddInt64(&stats_.RequestsForbidden.Ggpht, 1)
 		metrics.RequestForbidden.Ggpht.Inc()
-		io.WriteString(w, "Forbidden 403")
 		return
 	}
 
@@ -228,6 +234,7 @@ func ggpht(w http.ResponseWriter, req *http.Request) {
 
 	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
 	copyHeaders(resp.Header, w.Header(), NoRewrite)
+	w.WriteHeader(resp.StatusCode)
 
 	io.Copy(w, resp.Body)
 }

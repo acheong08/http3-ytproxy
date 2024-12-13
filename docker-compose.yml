@@ -12,10 +12,11 @@ services:
     # ports:
     #   - "0.0.0.0:8443:8443/tcp" # HTTP/2
     #   - "0.0.0.0:8443:8443/udp" # HTTP/3 (QUIC)
+    # Make sure that the key and the certificate files exist!
     volumes:
-      - ./key.key:/app/key.key
-      - ./fullchain.cer:/app/fullchain.cer
-    command: "./http3-ytproxy -l 0.0.0.0 -p 8443 -https -tls-key ./key.key -tls-cert ./fullchain.cer"
+      - ./key.key:/data/key.key:ro
+      - ./fullchain.pem:/data/cert.pem:ro
+    command: "./http3-ytproxy -l 0.0.0.0 -p 8443 -https"
     depends_on:
       - gluetun
 

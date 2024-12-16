@@ -38,6 +38,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	host := q.Get("host")
+	c := q.Get("c")
 	q.Del("host")
 
 	if len(host) <= 0 {
@@ -95,10 +96,20 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	body := []byte{0x78, 0} // protobuf body
 
 	request, err := http.NewRequest("POST", proxyURL.String(), bytes.NewReader(body))
-	copyHeaders(req.Header, request.Header, false)
-	request.Header.Set("User-Agent", ua)
 	if err != nil {
 		log.Panic(err)
+	}
+	copyHeaders(req.Header, request.Header, false)
+
+	switch c {
+	case "ANDROID":
+		request.Header.Set("User-Agent", "com.google.android.youtube/1537338816 (Linux; U; Android 13; en_US; ; Build/TQ2A.230505.002; Cronet/113.0.5672.24)")
+	case "IOS":
+		request.Header.Set("User-Agent", "com.google.ios.youtube/19.32.8 (iPhone14,5; U; CPU iOS 17_6 like Mac OS X;)")
+	case "WEB":
+		request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+	default:
+		request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
 	}
 
 	resp, err := client.Do(request)

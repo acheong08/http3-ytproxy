@@ -25,35 +25,45 @@ func forbiddenChecker(resp *http.Response, w http.ResponseWriter) error {
 
 func videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
+
 	expire, err := strconv.ParseInt(q.Get("expire"), 10, 64)
 	if err != nil {
 		w.WriteHeader(500)
-	}
-
-	// Prevent the process of already expired playbacks
-	// since they will return 403 from googlevideo servers.
-	if (expire - time.Now().Unix()) <= 0 {
-		w.WriteHeader(403)
+		io.WriteString(w, "Expire query string undefined")
 		return
 	}
 
-	host := q.Get("host")
+	// Prevent the process of already expired playbacks
+	// since they will return 403 from googlevideo server
+	if (expire - time.Now().Unix()) <= 0 {
+		w.WriteHeader(403)
+		io.WriteString(w, "Videoplayback URL has expired.")
+		return
+	}
+
 	c := q.Get("c")
+	if c == "" {
+		w.WriteHeader(400)
+		io.WriteString(w, "'c' query string undefined.")
+	}
+
+	host := q.Get("host")
 	q.Del("host")
 
 	if len(host) <= 0 {
+		// Fallback to use mvi and mn to build a host
 		mvi := q.Get("mvi")
 		mn := strings.Split(q.Get("mn"), ",")
 
 		if len(mvi) <= 0 {
 			w.WriteHeader(400)
-			io.WriteString(w, "No `mvi` in query parameters")
+			io.WriteString(w, "'mvi' query string undefined")
 			return
 		}
 
 		if len(mn) <= 0 {
 			w.WriteHeader(400)
-			io.WriteString(w, "No `mn` in query parameters")
+			io.WriteString(w, "'mn' query string undefined")
 			return
 		}
 
@@ -61,7 +71,6 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	parts := strings.Split(strings.ToLower(host), ".")
-
 	if len(parts) < 2 {
 		w.WriteHeader(400)
 		io.WriteString(w, "Invalid hostname.")
@@ -83,6 +92,13 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if c == "WEB" {
+		q.Set("alr", "yes")
+	}
+	if req.Header.Get("Range") != "" {
+		q.Set("range", req.Header.Get("Range"))
+	}
+
 	path := req.URL.EscapedPath()
 
 	proxyURL, err := url.Parse("https://" + host + path)
@@ -91,6 +107,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	proxyURL.RawQuery = q.Encode()
+	fmt.Print(proxyURL)
 
 	// https://github.com/FreeTubeApp/FreeTube/blob/5a4cd981cdf2c2a20ab68b001746658fd0c6484e/src/renderer/components/ft-shaka-video-player/ft-shaka-video-player.js#L1097
 	body := []byte{0x78, 0} // protobuf body
@@ -109,12 +126,27 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	case "WEB":
 		request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
 	default:
-		request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+		request.Header.Set("User-Agent", default_ua)
 	}
+
+	request.Header.Add("Origin", "https://www.youtube.com")
+	request.Header.Add("Referer", "https://www.youtube.com/")
 
 	resp, err := client.Do(request)
 	if err != nil {
 		log.Panic(err)
+	}
+
+	if resp.Header.Get("location") != "" {
+		new_url, err := url.Parse(resp.Header.Get("location"))
+		if err != nil {
+			log.Panic(err)
+		}
+		request.URL = new_url
+		resp, err = client.Do(request)
+		if err != nil {
+			log.Panic(err)
+		}
 	}
 
 	if err := forbiddenChecker(resp, w); err != nil {
@@ -186,7 +218,7 @@ func vi(w http.ResponseWriter, req *http.Request) {
 	request, err := http.NewRequest(req.Method, proxyURL.String(), nil)
 
 	copyHeaders(req.Header, request.Header, false)
-	request.Header.Set("User-Agent", ua)
+	request.Header.Set("User-Agent", default_ua)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -225,7 +257,7 @@ func ggpht(w http.ResponseWriter, req *http.Request) {
 
 	request, err := http.NewRequest(req.Method, proxyURL.String(), nil)
 	copyHeaders(req.Header, request.Header, false)
-	request.Header.Set("User-Agent", ua)
+	request.Header.Set("User-Agent", default_ua)
 	if err != nil {
 		log.Panic(err)
 	}

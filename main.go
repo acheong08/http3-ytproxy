@@ -86,6 +86,8 @@ var strip_headers = []string{
 	"Alt-Svc",
 	"Server",
 	"Cache-Control",
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/report-to
+	"report-to",
 }
 
 var path_prefix = ""

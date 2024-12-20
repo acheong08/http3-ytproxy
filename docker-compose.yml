@@ -1,13 +1,12 @@
-# Docker compose file for http3-proxy used in Invidious
-# IMPORTANT: Create the docker network manually before using gluetun
-# sudo docker network create --subnet=172.80.0.0/16 gluetun-http3-ytproxy
+# Docker compose file for http3-ytproxy used in inv.nadeko.net
 
 services:
   http3-proxy:
+    build: .
     image: git.nadeko.net/fijxu/http3-ytproxy:latest
     restart: always
     # Uncomment this IF YOU ARE using gluetun!
-    network_mode: "service:gluetun"
+    # network_mode: "service:gluetun"
     # Uncomment this IF YOU ARE NOT using gluetun!
     # ports:
     #   - "0.0.0.0:8443:8443/tcp" # HTTP/2
@@ -16,10 +15,16 @@ services:
     volumes:
       - ./key.key:/data/key.key:ro
       - ./fullchain.pem:/data/cert.pem:ro
-    command: "./http3-ytproxy -l 0.0.0.0 -p 8443 -https"
     depends_on:
-      - gluetun
+      gluetun:
+        condition: service_healthy
+    # Needed for HTTP/3, otherwise, quic-go will output this depending of the machine:
+    # "failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). 
+    # See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details."
+    cap_add:
+      - NET_ADMIN
 
+  # You can comment this whole service if you are not going to use Gluetun at all
   gluetun:
     image: qmcgaw/gluetun:latest
     restart: always
@@ -37,17 +42,3 @@ services:
       - /dev/net/tun:/dev/net/tun
     volumes:
       - ./gluetun:/gluetun
-    environment:
-      - VPN_SERVICE_PROVIDER="${VPN_PROVIDER}"
-      - VPN_TYPE=wireguard
-      - WIREGUARD_PRIVATE_KEY="${WIREGUARD_KEY}"
-      - WIREGUARD_ADDRESSES="${WIREGUARD_ADDRESSES}"
-      - SERVER_HOSTNAMES="${SERVER_HOSTNAMES}"
-      # Use system DNS (Setup a caching DNS server!)
-      - DNS_KEEP_NAMESERVER=on
-    networks:
-      gluetun-http3-ytproxy:
-
-networks:
-  gluetun-http3-ytproxy:
-    external: true

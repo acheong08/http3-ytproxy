@@ -1,4 +1,4 @@
-FROM golang:alpine AS build
+FROM golang:alpine3.21 AS build
 
 WORKDIR /app/
 
@@ -10,7 +10,9 @@ COPY . .
 RUN  --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "-s -w -X 'main.version=$(date '+%Y-%m-%d')-$(git rev-list --abbrev-commit -1 HEAD)'"
 
-FROM alpine:edge
+FROM alpine:3.21
+
+RUN adduser -u 10001 -S appuser
 
 RUN apk add --no-cache libwebp
 
@@ -18,4 +20,7 @@ WORKDIR /app/
 
 COPY --from=build /app/http3-ytproxy /app/http3-ytproxy
 
-CMD ./http3-ytproxy -l 0.0.0.0
+# Switch to non-privileged user
+USER appuser
+
+ENTRYPOINT ["/app/http3-ytproxy"]

@@ -65,8 +65,7 @@ var h2client = &http.Client{
 
 var client *http.Client
 
-// Same user agent as Invidious
-var ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+var default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
 var allowed_hosts = []string{
 	"youtube.com",
@@ -358,10 +357,6 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// To look like more like a browser
-		req.Header.Add("Origin", "https://www.youtube.com")
-		req.Header.Add("Referer", "https://www.youtube.com/")
-
 		atomic.AddInt64(&stats_.RequestCount, 1)
 		metrics.RequestCount.Inc()
 		next(w, req)
@@ -369,36 +364,47 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func main() {
-	var sock string
-	var host string
-	var port string
+	defaultHost := "0.0.0.0"
+	defaultPort := "8080"
+	defaultSock := "/tmp/http-ytproxy.sock"
+	defaultTLSCert := "/data/cert.pem"
+	defaultTLSKey := "/data/key.key"
 
-	var tls_cert string
-	var tls_key string
-	var ipv6 bool
-	var https bool
-	var h3c bool
+	https := os.Getenv("HTTPS") == "1"
+	h3c := os.Getenv("H3C") == "1"
+	h3s := os.Getenv("H3S") == "1"
+	ipv6 := os.Getenv("IPV6_ONLY") == "1"
 
-	https = os.Getenv("HTTPS") == "1"
-	h3c = os.Getenv("H3C") == "1"
-	h3s = os.Getenv("H3S") == "1"
-	ipv6 = os.Getenv("IPV6_ONLY") == "1"
-	// ua = os.Getenv("USER_AGENT")
-	// tls_cert = os.Getenv("TLS_CERT")
-	// tls_key = os.Getenv("TLS_KEY")
-	// sock = os.Getenv("SOCK_PATH")
-	// port = os.Getenv("PORT")
-	// host = os.Getenv("HOST")
+	tls_cert := os.Getenv("TLS_CERT")
+	if tls_cert == "" {
+		tls_cert = defaultTLSCert
+	}
+	tls_key := os.Getenv("TLS_KEY")
+	if tls_key == "" {
+		tls_key = defaultTLSKey
+	}
+	sock := os.Getenv("SOCK_PATH")
+	if sock == "" {
+		sock = defaultSock
+	}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = defaultPort
+	}
+	host := os.Getenv("HOST")
+	if host == "" {
+		host = defaultHost
+	}
 
-	flag.BoolVar(&https, "https", false, "Use built-in https server (recommended)")
-	flag.BoolVar(&h3s, "h3c", false, "Use HTTP/3 for client requests (high CPU usage)")
-	flag.BoolVar(&h3s, "h3s", true, "Use HTTP/3 for server requests, (requires HTTPS)")
-	flag.BoolVar(&ipv6_only, "ipv6_only", false, "Only use ipv6 for requests")
-	flag.StringVar(&tls_cert, "tls-cert", "/data/cert.pem", "TLS Certificate path")
-	flag.StringVar(&tls_key, "tls-key", "/data/key.key", "TLS Certificate Key path")
-	flag.StringVar(&sock, "s", "/tmp/http-ytproxy.sock", "Specify a socket name")
-	flag.StringVar(&port, "p", "8080", "Specify a port number")
-	flag.StringVar(&host, "l", "0.0.0.0", "Specify a listen address")
+	flag.BoolVar(&https, "https", https, "Use built-in https server (recommended)")
+	flag.BoolVar(&h3c, "h3c", h3c, "Use HTTP/3 for client requests (high CPU usage)")
+	flag.BoolVar(&h3s, "h3s", h3s, "Use HTTP/3 for server requests, (requires HTTPS)")
+	flag.BoolVar(&ipv6_only, "ipv6_only", ipv6_only, "Only use ipv6 for requests")
+	flag.StringVar(&tls_cert, "tls-cert", tls_cert, "TLS Certificate path")
+	flag.StringVar(&tls_key, "tls-key", tls_key, "TLS Certificate Key path")
+	flag.StringVar(&sock, "s", sock, "Specify a socket name")
+	flag.StringVar(&port, "p", port, "Specify a port number")
+	flag.StringVar(&host, "l", host, "Specify a listen address")
 	flag.Parse()
 
 	if h3c {

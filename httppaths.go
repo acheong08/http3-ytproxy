@@ -45,6 +45,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	if c == "" {
 		w.WriteHeader(400)
 		io.WriteString(w, "'c' query string undefined.")
+		return
 	}
 
 	host := q.Get("host")
@@ -92,9 +93,9 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if c == "WEB" {
-		q.Set("alr", "yes")
-	}
+	// if c == "WEB" {
+	// 	q.Set("alr", "yes")
+	// }
 	if req.Header.Get("Range") != "" {
 		q.Set("range", req.Header.Get("Range"))
 	}

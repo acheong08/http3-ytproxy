@@ -96,9 +96,9 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	// if c == "WEB" {
 	// 	q.Set("alr", "yes")
 	// }
-	if req.Header.Get("Range") != "" {
-		q.Set("range", req.Header.Get("Range"))
-	}
+	// if req.Header.Get("Range") != "" {
+	// 	q.Set("range", req.Header.Get("Range"))
+	// }
 
 	path := req.URL.EscapedPath()
 
@@ -108,7 +108,6 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	proxyURL.RawQuery = q.Encode()
-	fmt.Print(proxyURL)
 
 	// https://github.com/FreeTubeApp/FreeTube/blob/5a4cd981cdf2c2a20ab68b001746658fd0c6484e/src/renderer/components/ft-shaka-video-player/ft-shaka-video-player.js#L1097
 	body := []byte{0x78, 0} // protobuf body

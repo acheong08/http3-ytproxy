@@ -100,6 +100,8 @@ var version string
 
 var h3s bool
 
+var domain_only_access bool = false
+
 var programInit = time.Now()
 
 type ConnectionWatcher struct {
@@ -309,7 +311,7 @@ func beforeMisc(next http.HandlerFunc) http.HandlerFunc {
 		defer panicHandler(w)
 
 		// To prevent accessing from the bare IP address
-		if req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil {
+		if domain_only_access && (req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil) {
 			w.WriteHeader(444)
 			return
 		}
@@ -323,7 +325,7 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 		defer panicHandler(w)
 
 		// To prevent accessing from the bare IP address
-		if req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil {
+		if domain_only_access && (req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil) {
 			w.WriteHeader(444)
 			return
 		}
@@ -363,9 +365,8 @@ func main() {
 	defaultTLSCert := "/data/cert.pem"
 	defaultTLSKey := "/data/key.key"
 
-	var https bool = true
+	var https bool = false
 	var h3c bool = false
-	var h3s bool = true
 	var ipv6 bool = false
 
 	if strings.ToLower(os.Getenv("HTTPS")) == "true" {
@@ -379,6 +380,9 @@ func main() {
 	}
 	if strings.ToLower(os.Getenv("IPV6_ONLY")) == "true" {
 		ipv6 = true
+	}
+	if strings.ToLower(os.Getenv("DOMAIN_ONLY_ACCESS")) == "true" {
+		domain_only_access = true
 	}
 
 	tls_cert := os.Getenv("TLS_CERT")

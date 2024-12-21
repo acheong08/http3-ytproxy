@@ -216,12 +216,11 @@ func vi(w http.ResponseWriter, req *http.Request) {
 	proxyURL.RawQuery = q.Encode()
 
 	request, err := http.NewRequest(req.Method, proxyURL.String(), nil)
-
-	copyHeaders(req.Header, request.Header, false)
-	request.Header.Set("User-Agent", default_ua)
 	if err != nil {
 		log.Panic(err)
 	}
+
+	request.Header.Set("User-Agent", default_ua)
 
 	resp, err := client.Do(request)
 	if err != nil {
@@ -236,8 +235,8 @@ func vi(w http.ResponseWriter, req *http.Request) {
 
 	defer resp.Body.Close()
 
-	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
-	copyHeaders(resp.Header, w.Header(), NoRewrite)
+	// NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
+	// copyHeaders(resp.Header, w.Header(), NoRewrite)
 	w.WriteHeader(resp.StatusCode)
 
 	io.Copy(w, resp.Body)

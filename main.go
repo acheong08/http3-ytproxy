@@ -363,10 +363,23 @@ func main() {
 	defaultTLSCert := "/data/cert.pem"
 	defaultTLSKey := "/data/key.key"
 
-	https := os.Getenv("HTTPS") == "1"
-	h3c := os.Getenv("H3C") == "1"
-	h3s := os.Getenv("H3S") == "1"
-	ipv6 := os.Getenv("IPV6_ONLY") == "1"
+	var https bool = true
+	var h3c bool = false
+	var h3s bool = true
+	var ipv6 bool = false
+
+	if strings.ToLower(os.Getenv("HTTPS")) == "true" {
+		https = true
+	}
+	if strings.ToLower(os.Getenv("H3C")) == "true" {
+		h3c = true
+	}
+	if strings.ToLower(os.Getenv("H3S")) == "true" {
+		h3s = true
+	}
+	if strings.ToLower(os.Getenv("IPV6_ONLY")) == "true" {
+		ipv6 = true
+	}
 
 	tls_cert := os.Getenv("TLS_CERT")
 	if tls_cert == "" {

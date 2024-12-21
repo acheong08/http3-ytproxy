@@ -328,21 +328,12 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Only allow requests from origin inv.nadeko.net
-		// Why? Because I don't want anyone to use this proxy for their own purposes.
-		// Hardcoded because I'm lazy lol!
-		// origin := req.Header.Get("Origin")
-		// if origin == "https://inv.nadeko.net" || origin == "https://materialious.nadeko.net" {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
 		w.Header().Set("Access-Control-Max-Age", "1728000")
 		w.Header().Set("Strict-Transport-Security", "max-age=86400")
-		// } else {
-		// 	w.WriteHeader(401)
-		// 	io.WriteString(w, "Only requests coming from inv.nadeko.net are allowed.")
-		// 	return
-		// }
+		w.Header().Set("X-Powered-By", "http3-ytproxy "+version+"-"+runtime.GOARCH)
 
 		if h3s {
 			w.Header().Set("Alt-Svc", "h3=\":8443\"; ma=86400")

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -21,6 +22,17 @@ func forbiddenChecker(resp *http.Response, w http.ResponseWriter) error {
 		return fmt.Errorf("%s returned %d", resp.Request.Host, resp.StatusCode)
 	}
 	return nil
+}
+
+func connectionChecker(ctx context.Context) bool {
+	// To check if the connection has been closed. To prevent
+	// doing a useless request to google servers
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 func videoplayback(w http.ResponseWriter, req *http.Request) {
@@ -132,6 +144,10 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	request.Header.Add("Origin", "https://www.youtube.com")
 	request.Header.Add("Referer", "https://www.youtube.com/")
 
+	if connectionChecker(req.Context()) {
+		return
+	}
+
 	resp, err := client.Do(request)
 	if err != nil {
 		log.Panic(err)
@@ -222,6 +238,10 @@ func vi(w http.ResponseWriter, req *http.Request) {
 
 	request.Header.Set("User-Agent", default_ua)
 
+	if connectionChecker(req.Context()) {
+		return
+	}
+
 	resp, err := client.Do(request)
 	if err != nil {
 		log.Panic(err)
@@ -259,6 +279,10 @@ func ggpht(w http.ResponseWriter, req *http.Request) {
 	request.Header.Set("User-Agent", default_ua)
 	if err != nil {
 		log.Panic(err)
+	}
+
+	if connectionChecker(req.Context()) {
+		return
 	}
 
 	resp, err := client.Do(request)

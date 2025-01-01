@@ -54,11 +54,11 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	c := q.Get("c")
-	if c == "" {
-		w.WriteHeader(400)
-		io.WriteString(w, "'c' query string undefined.")
-		return
-	}
+	// if c == "" {
+	// 	w.WriteHeader(400)
+	// 	io.WriteString(w, "'c' query string undefined.")
+	// 	return
+	// }
 
 	host := q.Get("host")
 	q.Del("host")

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"runtime"
@@ -29,6 +30,8 @@ var (
 	rl = flag.Int("r", 8000, "Read limit in Kbps")
 )
 
+// QUIC doesn't seem to support HTTP nor SOCKS5 proxies due to how it's made.
+// (Since it's UDP)
 var h3client = &http.Client{
 	Transport: &http3.Transport{},
 	Timeout:   10 * time.Second,
@@ -38,6 +41,8 @@ var dialer = &net.Dialer{
 	Timeout:   30 * time.Second,
 	KeepAlive: 30 * time.Second,
 }
+
+var proxy string
 
 // http/2 client
 var h2client = &http.Client{
@@ -60,6 +65,12 @@ var h2client = &http.Client{
 		MaxConnsPerHost:       0,
 		MaxIdleConnsPerHost:   10,
 		MaxIdleConns:          0,
+		Proxy: func(r *http.Request) (*url.URL, error) {
+			if proxy != "" {
+				return url.Parse(proxy)
+			}
+			return nil, nil
+		},
 	},
 }
 
@@ -405,6 +416,7 @@ func main() {
 	if host == "" {
 		host = defaultHost
 	}
+	proxy = os.Getenv("PROXY")
 
 	flag.BoolVar(&https, "https", https, "Use built-in https server (recommended)")
 	flag.BoolVar(&h3c, "h3c", h3c, "Use HTTP/3 for client requests (high CPU usage)")

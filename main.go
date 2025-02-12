@@ -156,16 +156,19 @@ func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) 
 var cw ConnectionWatcher
 
 type statusJson struct {
-	Version                string        `json:"version"`
-	Uptime                 time.Duration `json:"uptime"`
-	RequestCount           int64         `json:"requestCount"`
-	RequestPerSecond       int64         `json:"requestPerSecond"`
-	RequestPerMinute       int64         `json:"requestPerMinute"`
-	TotalConnEstablished   int64         `json:"totalEstablished"`
-	EstablishedConnections int64         `json:"establishedConnections"`
-	ActiveConnections      int64         `json:"activeConnections"`
-	IdleConnections        int64         `json:"idleConnections"`
-	RequestsForbidden      struct {
+	Version                 string        `json:"version"`
+	Uptime                  time.Duration `json:"uptime"`
+	RequestCount            int64         `json:"requestCount"`
+	RequestPerSecond        int64         `json:"requestPerSecond"`
+	RequestPerMinute        int64         `json:"requestPerMinute"`
+	TotalConnEstablished    int64         `json:"totalEstablished"`
+	EstablishedConnections  int64         `json:"establishedConnections"`
+	ActiveConnections       int64         `json:"activeConnections"`
+	IdleConnections         int64         `json:"idleConnections"`
+	RequestsForbiddenPerSec struct {
+		Videoplayback int64 `json:"videoplayback"`
+	}
+	RequestsForbidden struct {
 		Videoplayback int64 `json:"videoplayback"`
 		Vi            int64 `json:"vi"`
 		Ggpht         int64 `json:"ggpht"`
@@ -182,6 +185,11 @@ var stats_ = statusJson{
 	EstablishedConnections: 0,
 	ActiveConnections:      0,
 	IdleConnections:        0,
+	RequestsForbiddenPerSec: struct {
+		Videoplayback int64 `json:"videoplayback"`
+	}{
+		Videoplayback: 0,
+	},
 	RequestsForbidden: struct {
 		Videoplayback int64 `json:"videoplayback"`
 		Vi            int64 `json:"vi"`
@@ -313,6 +321,27 @@ func requestPerMinute() {
 		current := stats_.RequestCount
 		stats_.RequestPerMinute = current - last
 		metrics.RequestPerMinute.Set(float64(stats_.RequestPerMinute))
+		last = current
+	}
+}
+
+func forbiddenRequestsPerSec() {
+	var last int64
+	for {
+		time.Sleep(1 * time.Second)
+		current := stats_.RequestsForbidden.Videoplayback
+		stats_.RequestsForbiddenPerSec.Videoplayback = current - last
+		// fmt.Println(aux)
+		// if aux > 15 {
+		// 	body := "{\"status\":\"stopped\"}\""
+		// 	request, err := http.NewRequest("PUT", "http://gluetun:8000", strings.NewReader(body))
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+		// 	client.Do(request)
+		// }
+		// metrics.RequestPerSecond.Set(float64(stats_.RequestPerSecond))
+		// time.Sleep(60 * time.Second)
 		last = current
 	}
 }
@@ -479,6 +508,7 @@ func main() {
 
 	go requestPerSecond()
 	go requestPerMinute()
+	go forbiddenRequestsPerSec()
 
 	ln, err := net.Listen("tcp", host+":"+port)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -21,6 +22,7 @@ import (
 	"github.com/conduitio/bwlimit"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/procfs"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
@@ -325,24 +327,54 @@ func requestPerMinute() {
 	}
 }
 
-func forbiddenRequestsPerSec() {
-	var last int64
+var tx uint64
+
+func blockCheckerCalc(p *procfs.Proc) {
+	var last uint64
 	for {
 		time.Sleep(1 * time.Second)
-		current := stats_.RequestsForbidden.Videoplayback
-		stats_.RequestsForbiddenPerSec.Videoplayback = current - last
-		// fmt.Println(aux)
-		// if aux > 15 {
-		// 	body := "{\"status\":\"stopped\"}\""
-		// 	request, err := http.NewRequest("PUT", "http://gluetun:8000", strings.NewReader(body))
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-		// 	client.Do(request)
-		// }
-		// metrics.RequestPerSecond.Set(float64(stats_.RequestPerSecond))
-		// time.Sleep(60 * time.Second)
+		// p.NetDev should never fail.
+		stat, _ := p.NetDev()
+		current := stat.Total().TxBytes
+		tx = current - last
 		last = current
+	}
+}
+
+// Detects if a backend has been blocked based on the amount of bandwidth
+// reported by procfs.
+// This may be the best way to detect if the IP has been blocked from googlevideo
+// servers. I would like to detect blockages using the status code that googlevideo
+// returns, which most of the time is 403 (Forbidden). But this error code is not
+// exclusive to IP blocks, it's also returned for other reasons like a wrong
+// query parameter like `pot` (po_token) or anything like that.
+func blockChecker(gh string, cooldown int) {
+	log.Println("[INFO] Starting blockchecker")
+	// Sleep for 60 seconds before commencing the loop
+	time.Sleep(60 * time.Second)
+	url := "http://" + gh + "/v1/openvpn/status"
+
+	p, err := procfs.Self()
+	if err != nil {
+		log.Printf("[ERROR] [procfs]: Could not get process: %s\n", err)
+		log.Println("[INFO] Blockchecker will not run, so if the VPN IP used on gluetun gets blocked, it will not be rotated!")
+		return
+	}
+	go blockCheckerCalc(&p)
+
+	for {
+		time.Sleep(time.Duration(cooldown) * time.Second)
+		if float64(tx)*0.000008 < 2.0 {
+			body := "{\"status\":\"stopped\"}\""
+			// This should never fail too
+			request, _ := http.NewRequest("PUT", url, strings.NewReader(body))
+			_, err = client.Do(request)
+			if err != nil {
+				log.Printf("[ERROR] Failed to send request to gluetun.")
+			} else {
+				log.Printf("[INFO] Request to change IP sent to gluetun successfully")
+			}
+		}
 	}
 }
 
@@ -408,6 +440,7 @@ func main() {
 	var https bool = false
 	var h3c bool = false
 	var ipv6 bool = false
+	var bc bool = true
 
 	if strings.ToLower(os.Getenv("HTTPS")) == "true" {
 		https = true
@@ -420,6 +453,9 @@ func main() {
 	}
 	if strings.ToLower(os.Getenv("IPV6_ONLY")) == "true" {
 		ipv6 = true
+	}
+	if strings.ToLower(os.Getenv("BLOCK_CHECKER")) == "false" {
+		bc = false
 	}
 	if strings.ToLower(os.Getenv("DOMAIN_ONLY_ACCESS")) == "true" {
 		domain_only_access = true
@@ -444,6 +480,15 @@ func main() {
 	host := os.Getenv("HOST")
 	if host == "" {
 		host = defaultHost
+	}
+	// gh is where the gluetun api is located
+	gh := os.Getenv("GLUETUN_HOSTNAME")
+	if gh == "" {
+		gh = "127.0.0.1:8000"
+	}
+	bc_cooldown := os.Getenv("BLOCK_CHECKER_COOLDOWN")
+	if bc_cooldown == "" {
+		bc_cooldown = "60"
 	}
 	proxy = os.Getenv("PROXY")
 
@@ -508,7 +553,13 @@ func main() {
 
 	go requestPerSecond()
 	go requestPerMinute()
-	go forbiddenRequestsPerSec()
+	if bc {
+		num, err := strconv.Atoi(bc_cooldown)
+		if err != nil {
+			log.Fatalf("[FATAL] Error while setting BLOCK_CHECKER_COOLDOWN: %s", err)
+		}
+		go blockChecker(gh, num)
+	}
 
 	ln, err := net.Listen("tcp", host+":"+port)
 	if err != nil {

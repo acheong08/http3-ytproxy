@@ -63,25 +63,25 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	host := q.Get("host")
 	q.Del("host")
 
-	if len(host) <= 0 {
-		// Fallback to use mvi and mn to build a host
-		mvi := q.Get("mvi")
-		mn := strings.Split(q.Get("mn"), ",")
+	// if len(host) <= 0 {
+	// 	// Fallback to use mvi and mn to build a host
+	// 	mvi := q.Get("mvi")
+	// 	mn := strings.Split(q.Get("mn"), ",")
 
-		if len(mvi) <= 0 {
-			w.WriteHeader(400)
-			io.WriteString(w, "'mvi' query string undefined")
-			return
-		}
+	// 	if len(mvi) <= 0 {
+	// 		w.WriteHeader(400)
+	// 		io.WriteString(w, "'mvi' query string undefined")
+	// 		return
+	// 	}
 
-		if len(mn) <= 0 {
-			w.WriteHeader(400)
-			io.WriteString(w, "'mn' query string undefined")
-			return
-		}
+	// 	if len(mn) <= 0 {
+	// 		w.WriteHeader(400)
+	// 		io.WriteString(w, "'mn' query string undefined")
+	// 		return
+	// 	}
 
-		host = "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
-	}
+	// 	host = "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
+	// }
 
 	parts := strings.Split(strings.ToLower(host), ".")
 	if len(parts) < 2 {
@@ -124,45 +124,63 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	// https://github.com/FreeTubeApp/FreeTube/blob/5a4cd981cdf2c2a20ab68b001746658fd0c6484e/src/renderer/components/ft-shaka-video-player/ft-shaka-video-player.js#L1097
 	body := []byte{0x78, 0} // protobuf body
 
-	request, err := http.NewRequest("POST", proxyURL.String(), bytes.NewReader(body))
+	postRequest, err := http.NewRequest("POST", proxyURL.String(), bytes.NewReader(body))
 	if err != nil {
-		log.Panic(err)
+		log.Panic("Failed to create postRequest:", err)
 	}
-	copyHeaders(req.Header, request.Header, false)
+	headRequest, err := http.NewRequest("HEAD", proxyURL.String(), nil)
+	if err != nil {
+		log.Panic("Failed to create headRequest:", err)
+	}
+	copyHeaders(req.Header, postRequest.Header, false)
+	copyHeaders(req.Header, headRequest.Header, false)
 
 	switch c {
 	case "ANDROID":
-		request.Header.Set("User-Agent", "com.google.android.youtube/1537338816 (Linux; U; Android 13; en_US; ; Build/TQ2A.230505.002; Cronet/113.0.5672.24)")
+		postRequest.Header.Set("User-Agent", "com.google.android.youtube/1537338816 (Linux; U; Android 13; en_US; ; Build/TQ2A.230505.002; Cronet/113.0.5672.24)")
+		headRequest.Header.Set("User-Agent", "com.google.android.youtube/1537338816 (Linux; U; Android 13; en_US; ; Build/TQ2A.230505.002; Cronet/113.0.5672.24)")
 	case "IOS":
-		request.Header.Set("User-Agent", "com.google.ios.youtube/19.32.8 (iPhone14,5; U; CPU iOS 17_6 like Mac OS X;)")
+		postRequest.Header.Set("User-Agent", "com.google.ios.youtube/19.32.8 (iPhone14,5; U; CPU iOS 17_6 like Mac OS X;)")
+		headRequest.Header.Set("User-Agent", "com.google.ios.youtube/19.32.8 (iPhone14,5; U; CPU iOS 17_6 like Mac OS X;)")
 	case "WEB":
-		request.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+		postRequest.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+		headRequest.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
 	default:
-		request.Header.Set("User-Agent", default_ua)
+		postRequest.Header.Set("User-Agent", default_ua)
+		headRequest.Header.Set("User-Agent", default_ua)
 	}
 
-	request.Header.Add("Origin", "https://www.youtube.com")
-	request.Header.Add("Referer", "https://www.youtube.com/")
+	postRequest.Header.Add("Origin", "https://www.youtube.com")
+	headRequest.Header.Add("Origin", "https://www.youtube.com")
+	postRequest.Header.Add("Referer", "https://www.youtube.com/")
+	headRequest.Header.Add("Referer", "https://www.youtube.com/")
 
 	if connectionChecker(req.Context()) {
 		return
 	}
 
-	resp, err := client.Do(request)
-	if err != nil {
-		log.Panic(err)
+	resp := &http.Response{}
+
+	for i := 0; i < 5; i++ {
+		resp, err = client.Do(headRequest)
+		if err != nil {
+			log.Panic("Failed to do HEAD request:", err)
+		}
+		if resp.Header.Get("Location") != "" {
+			new_url, _ := url.Parse(resp.Header.Get("Location"))
+			postRequest.URL = new_url
+			headRequest.URL = new_url
+			postRequest.Host = new_url.Host
+			headRequest.Host = new_url.Host
+			continue
+		} else {
+			break
+		}
 	}
 
-	if resp.Header.Get("location") != "" {
-		new_url, err := url.Parse(resp.Header.Get("location"))
-		if err != nil {
-			log.Panic(err)
-		}
-		request.URL = new_url
-		resp, err = client.Do(request)
-		if err != nil {
-			log.Panic(err)
-		}
+	resp, err = client.Do(postRequest)
+	if err != nil {
+		log.Panic("Failed to do POST request:", err)
 	}
 
 	if err := forbiddenChecker(resp, w); err != nil {

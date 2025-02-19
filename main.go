@@ -48,6 +48,9 @@ var proxy string
 
 // http/2 client
 var h2client = &http.Client{
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
 	Transport: &http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
 			var net string

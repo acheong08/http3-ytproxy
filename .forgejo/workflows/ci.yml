@@ -2,9 +2,8 @@ name: "CI"
 
 on:
   workflow_dispatch:
-    inputs: {}
   push:
-    branches: ["*"]
+    branches: ["main", "master"]
 
 jobs:
   build:
@@ -13,21 +12,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-
-      # - name: Set up QEMU for ARM64 builds
-      #   uses: docker/setup-qemu-action@v3
-      #   with:
-      #     platforms: arm64
-
-      - name: Cache Go packages
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-golang-
 
       - name: Setup Docker BuildX system
         uses: docker/setup-buildx-action@v3
@@ -48,11 +32,21 @@ jobs:
             type=sha,format=short,prefix={{date 'YYYY.MM.DD'}}-,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
 
-      - name: Build and push Docker AMD64/ARM64
+      - name: Go Build Cache for Docker
+        uses: actions/cache@v4
+        with:
+          path: go-build-cache
+          key: ${{ runner.os }}-go-build-cache-${{ hashFiles('**/go.sum') }}
+
+      - name: Inject go-build-cache
+        uses: https://github.com/reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-source: go-build-cache
+
+      - name: Build and push Docker
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
-          # platforms: linux/amd64,linux/arm64/v8
           push: true
           tags: ${{ steps.meta.outputs.tags }}

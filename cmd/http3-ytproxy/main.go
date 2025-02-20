@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -31,11 +30,11 @@ var (
 	rl = flag.Int("r", 8000, "Read limit in Kbps")
 )
 
-var version string
-
 var h3s bool
 
 var domain_only_access bool = false
+
+var version string
 
 type ConnectionWatcher struct {
 	totalEstablished int64
@@ -45,59 +44,22 @@ type ConnectionWatcher struct {
 }
 
 // https://stackoverflow.com/questions/51317122/how-to-get-number-of-idle-and-active-connections-in-go
-
 // OnStateChange records open connections in response to connection
 // state changes. Set net/http Server.ConnState to this method
 // as value.
 func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) {
 	switch state {
 	case http.StateNew:
-		atomic.AddInt64(&stats_.EstablishedConnections, 1)
 		metrics.Metrics.EstablishedConnections.Inc()
-		atomic.AddInt64(&stats_.TotalConnEstablished, 1)
 		metrics.Metrics.TotalConnEstablished.Inc()
 	// case http.StateActive:
 	// 	atomic.AddInt64(&cw.active, 1)
 	case http.StateClosed, http.StateHijacked:
-		atomic.AddInt64(&stats_.EstablishedConnections, -1)
 		metrics.Metrics.EstablishedConnections.Dec()
 	}
 }
 
-// // Count returns the number of connections at the time
-// // the call.
-// func (cw *ConnectionWatcher) Count() int {
-// 	return int(atomic.LoadInt64(&cw.n))
-// }
-
-// // Add adds c to the number of active connections.
-// func (cw *ConnectionWatcher) Add(c int64) {
-// 	atomic.AddInt64(&cw.n, c)
-// }
-
 var cw ConnectionWatcher
-
-func requestPerSecond() {
-	var last int64
-	for {
-		time.Sleep(1 * time.Second)
-		current := stats_.RequestCount
-		stats_.RequestPerSecond = current - last
-		metrics.Metrics.RequestPerSecond.Set(float64(stats_.RequestPerSecond))
-		last = current
-	}
-}
-
-func requestPerMinute() {
-	var last int64
-	for {
-		time.Sleep(60 * time.Second)
-		current := stats_.RequestCount
-		stats_.RequestPerMinute = current - last
-		metrics.Metrics.RequestPerMinute.Set(float64(stats_.RequestPerMinute))
-		last = current
-	}
-}
 
 var tx uint64
 
@@ -196,7 +158,6 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		atomic.AddInt64(&stats_.RequestCount, 1)
 		metrics.Metrics.RequestCount.Inc()
 		next(w, req)
 	}
@@ -297,7 +258,6 @@ func main() {
 	// MISC ROUTES
 	mux.HandleFunc("/", beforeMisc(paths.Root))
 	mux.HandleFunc("/health", beforeMisc(paths.Health))
-	mux.HandleFunc("/stats", beforeMisc(paths.Stats))
 
 	metrics.Register()
 
@@ -312,8 +272,6 @@ func main() {
 	mux.HandleFunc("/a/", beforeProxy(paths.Ggpht))
 	mux.HandleFunc("/ytc/", beforeProxy(paths.Ggpht))
 
-	go requestPerSecond()
-	go requestPerMinute()
 	if bc {
 		num, err := strconv.Atoi(bc_cooldown)
 		if err != nil {

@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync/atomic"
 
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/metrics"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
 )
 
@@ -47,8 +47,7 @@ func Vi(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := forbiddenChecker(resp, w); err != nil {
-		atomic.AddInt64(&stats_.RequestsForbidden.Vi, 1)
-		metrics.RequestForbidden.Vi.Inc()
+		metrics.Metrics.RequestForbidden.Vi.Inc()
 		return
 	}
 

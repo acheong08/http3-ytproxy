@@ -9,10 +9,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/metrics"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
 )
 
@@ -178,8 +178,7 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := forbiddenChecker(resp, w); err != nil {
-		atomic.AddInt64(&stats_.RequestsForbidden.Videoplayback, 1)
-		metrics.RequestForbidden.Videoplayback.Inc()
+		metrics.Metrics.RequestForbidden.Videoplayback.Inc()
 		return
 	}
 

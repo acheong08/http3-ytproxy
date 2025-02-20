@@ -1,4 +1,4 @@
-package main
+package paths
 
 import (
 	"bytes"
@@ -11,6 +11,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
 )
 
 func forbiddenChecker(resp *http.Response, w http.ResponseWriter) error {
@@ -23,8 +26,37 @@ func forbiddenChecker(resp *http.Response, w http.ResponseWriter) error {
 	return nil
 }
 
-func videoplayback(w http.ResponseWriter, req *http.Request) {
+func checkRequest(w http.ResponseWriter, req *http.Request, params url.Values) {
+	host := params.Get("host")
+
+	parts := strings.Split(strings.ToLower(host), ".")
+	if len(parts) < 2 {
+		w.WriteHeader(400)
+		io.WriteString(w, "Invalid hostname.")
+		return
+	}
+
+	domain := parts[len(parts)-2] + "." + parts[len(parts)-1]
+	disallowed := true
+	for _, value := range allowed_hosts {
+		if domain == value {
+			disallowed = false
+			break
+		}
+	}
+
+	if disallowed {
+		w.WriteHeader(401)
+		io.WriteString(w, "Non YouTube domains are not supported.")
+		return
+	}
+
+}
+
+func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
+
+	checkRequest(w, req, q)
 
 	expire, err := strconv.ParseInt(q.Get("expire"), 10, 64)
 	if err != nil {
@@ -71,28 +103,6 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	// 	host = "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
 	// }
 
-	parts := strings.Split(strings.ToLower(host), ".")
-	if len(parts) < 2 {
-		w.WriteHeader(400)
-		io.WriteString(w, "Invalid hostname.")
-		return
-	}
-
-	domain := parts[len(parts)-2] + "." + parts[len(parts)-1]
-	disallowed := true
-	for _, value := range allowed_hosts {
-		if domain == value {
-			disallowed = false
-			break
-		}
-	}
-
-	if disallowed {
-		w.WriteHeader(401)
-		io.WriteString(w, "Non YouTube domains are not supported.")
-		return
-	}
-
 	// if c == "WEB" {
 	// 	q.Set("alr", "yes")
 	// }
@@ -120,8 +130,8 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Panic("Failed to create headRequest:", err)
 	}
-	copyHeaders(req.Header, postRequest.Header, false)
-	copyHeaders(req.Header, headRequest.Header, false)
+	utils.CopyHeaders(req.Header, postRequest.Header, false)
+	utils.CopyHeaders(req.Header, headRequest.Header, false)
 
 	switch c {
 	case "ANDROID":
@@ -146,7 +156,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	resp := &http.Response{}
 
 	for i := 0; i < 5; i++ {
-		resp, err = client.Do(headRequest)
+		resp, err = httpc.Client.Do(headRequest)
 		if err != nil {
 			log.Panic("Failed to do HEAD request:", err)
 		}
@@ -162,7 +172,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	resp, err = client.Do(postRequest)
+	resp, err = httpc.Client.Do(postRequest)
 	if err != nil {
 		log.Panic("Failed to do POST request:", err)
 	}
@@ -176,7 +186,7 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	defer resp.Body.Close()
 
 	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
-	copyHeaders(resp.Header, w.Header(), NoRewrite)
+	utils.CopyHeaders(resp.Header, w.Header(), NoRewrite)
 
 	w.WriteHeader(resp.StatusCode)
 
@@ -196,12 +206,12 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 				line = "https://" + reqUrl.Hostname() + path + line
 			}
 			if strings.HasPrefix(line, "https://") {
-				lines[i] = RelativeUrl(line)
+				lines[i] = utils.RelativeUrl(line)
 			}
 
 			if manifest_re.MatchString(line) {
 				url := manifest_re.FindStringSubmatch(line)[1]
-				lines[i] = strings.Replace(line, url, RelativeUrl(url), 1)
+				lines[i] = strings.Replace(line, url, utils.RelativeUrl(url), 1)
 			}
 		}
 
@@ -209,92 +219,4 @@ func videoplayback(w http.ResponseWriter, req *http.Request) {
 	} else {
 		io.Copy(w, resp.Body)
 	}
-}
-
-func vi(w http.ResponseWriter, req *http.Request) {
-	const host string = "i.ytimg.com"
-	q := req.URL.Query()
-
-	path := req.URL.EscapedPath()
-
-	proxyURL, err := url.Parse("https://" + host + path)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	if strings.HasSuffix(proxyURL.EscapedPath(), "maxres.jpg") {
-		proxyURL.Path = getBestThumbnail(proxyURL.EscapedPath())
-	}
-
-	/*
-		Required for /sb/ endpoints
-		You can't access https://i.ytimg.com/sb/<VIDEOID>/storyboard3_L2/M3.jpg
-		without it's parameters `sqp` and `sigh`
-	*/
-	proxyURL.RawQuery = q.Encode()
-
-	request, err := http.NewRequest(req.Method, proxyURL.String(), nil)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	request.Header.Set("User-Agent", default_ua)
-
-	resp, err := client.Do(request)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	if err := forbiddenChecker(resp, w); err != nil {
-		atomic.AddInt64(&stats_.RequestsForbidden.Vi, 1)
-		metrics.RequestForbidden.Vi.Inc()
-		return
-	}
-
-	defer resp.Body.Close()
-
-	// NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
-	// copyHeaders(resp.Header, w.Header(), NoRewrite)
-	w.WriteHeader(resp.StatusCode)
-
-	io.Copy(w, resp.Body)
-}
-
-func ggpht(w http.ResponseWriter, req *http.Request) {
-	const host string = "yt3.ggpht.com"
-
-	path := req.URL.EscapedPath()
-	path = strings.Replace(path, "/ggpht", "", 1)
-	path = strings.Replace(path, "/i/", "/", 1)
-
-	proxyURL, err := url.Parse("https://" + host + path)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	request, err := http.NewRequest(req.Method, proxyURL.String(), nil)
-	copyHeaders(req.Header, request.Header, false)
-	request.Header.Set("User-Agent", default_ua)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	resp, err := client.Do(request)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	if err := forbiddenChecker(resp, w); err != nil {
-		atomic.AddInt64(&stats_.RequestsForbidden.Ggpht, 1)
-		metrics.RequestForbidden.Ggpht.Inc()
-		return
-	}
-
-	defer resp.Body.Close()
-
-	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
-	copyHeaders(resp.Header, w.Header(), NoRewrite)
-	w.WriteHeader(resp.StatusCode)
-
-	io.Copy(w, resp.Body)
 }

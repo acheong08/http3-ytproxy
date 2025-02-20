@@ -2,16 +2,13 @@ package main
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"flag"
 	"io"
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -19,9 +16,11 @@ import (
 	"syscall"
 	"time"
 
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/metrics"
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/paths"
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
 	"github.com/conduitio/bwlimit"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/procfs"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -32,93 +31,11 @@ var (
 	rl = flag.Int("r", 8000, "Read limit in Kbps")
 )
 
-// QUIC doesn't seem to support HTTP nor SOCKS5 proxies due to how it's made.
-// (Since it's UDP)
-var h3client = &http.Client{
-	Transport: &http3.Transport{},
-	Timeout:   10 * time.Second,
-}
-
-var dialer = &net.Dialer{
-	Timeout:   30 * time.Second,
-	KeepAlive: 30 * time.Second,
-}
-
-var proxy string
-
-// http/2 client
-var h2client = &http.Client{
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	},
-	Transport: &http.Transport{
-		Dial: func(network, addr string) (net.Conn, error) {
-			var net string
-			if ipv6_only {
-				net = "tcp6"
-			} else {
-				net = "tcp4"
-			}
-			return dialer.Dial(net, addr)
-		},
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 20 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		IdleConnTimeout:       30 * time.Second,
-		ReadBufferSize:        16 * 1024,
-		ForceAttemptHTTP2:     true,
-		MaxConnsPerHost:       0,
-		MaxIdleConnsPerHost:   10,
-		MaxIdleConns:          0,
-		Proxy: func(r *http.Request) (*url.URL, error) {
-			if proxy != "" {
-				return url.Parse(proxy)
-			}
-			return nil, nil
-		},
-	},
-}
-
-var client *http.Client
-
-var default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-
-var allowed_hosts = []string{
-	"youtube.com",
-	"googlevideo.com",
-	"ytimg.com",
-	"ggpht.com",
-	"googleusercontent.com",
-}
-
-var strip_headers = []string{
-	"Accept-Encoding",
-	"Authorization",
-	"Origin",
-	"Referer",
-	"Cookie",
-	"Set-Cookie",
-	"Etag",
-	"Alt-Svc",
-	"Server",
-	"Cache-Control",
-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/report-to
-	"report-to",
-}
-
-var path_prefix = ""
-
-var manifest_re = regexp.MustCompile(`(?m)URI="([^"]+)"`)
-
-var ipv6_only = false
-
 var version string
 
 var h3s bool
 
 var domain_only_access bool = false
-
-var programInit = time.Now()
 
 type ConnectionWatcher struct {
 	totalEstablished int64
@@ -136,14 +53,14 @@ func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) 
 	switch state {
 	case http.StateNew:
 		atomic.AddInt64(&stats_.EstablishedConnections, 1)
-		metrics.EstablishedConnections.Inc()
+		metrics.Metrics.EstablishedConnections.Inc()
 		atomic.AddInt64(&stats_.TotalConnEstablished, 1)
-		metrics.TotalConnEstablished.Inc()
+		metrics.Metrics.TotalConnEstablished.Inc()
 	// case http.StateActive:
 	// 	atomic.AddInt64(&cw.active, 1)
 	case http.StateClosed, http.StateHijacked:
 		atomic.AddInt64(&stats_.EstablishedConnections, -1)
-		metrics.EstablishedConnections.Dec()
+		metrics.Metrics.EstablishedConnections.Dec()
 	}
 }
 
@@ -160,161 +77,13 @@ func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) 
 
 var cw ConnectionWatcher
 
-type statusJson struct {
-	Version                 string        `json:"version"`
-	Uptime                  time.Duration `json:"uptime"`
-	RequestCount            int64         `json:"requestCount"`
-	RequestPerSecond        int64         `json:"requestPerSecond"`
-	RequestPerMinute        int64         `json:"requestPerMinute"`
-	TotalConnEstablished    int64         `json:"totalEstablished"`
-	EstablishedConnections  int64         `json:"establishedConnections"`
-	ActiveConnections       int64         `json:"activeConnections"`
-	IdleConnections         int64         `json:"idleConnections"`
-	RequestsForbiddenPerSec struct {
-		Videoplayback int64 `json:"videoplayback"`
-	}
-	RequestsForbidden struct {
-		Videoplayback int64 `json:"videoplayback"`
-		Vi            int64 `json:"vi"`
-		Ggpht         int64 `json:"ggpht"`
-	} `json:"requestsForbidden"`
-}
-
-var stats_ = statusJson{
-	Version:                version + "-" + runtime.GOARCH,
-	Uptime:                 0,
-	RequestCount:           0,
-	RequestPerSecond:       0,
-	RequestPerMinute:       0,
-	TotalConnEstablished:   0,
-	EstablishedConnections: 0,
-	ActiveConnections:      0,
-	IdleConnections:        0,
-	RequestsForbiddenPerSec: struct {
-		Videoplayback int64 `json:"videoplayback"`
-	}{
-		Videoplayback: 0,
-	},
-	RequestsForbidden: struct {
-		Videoplayback int64 `json:"videoplayback"`
-		Vi            int64 `json:"vi"`
-		Ggpht         int64 `json:"ggpht"`
-	}{
-		Videoplayback: 0,
-		Vi:            0,
-		Ggpht:         0,
-	},
-}
-
-type Metrics struct {
-	Uptime                 prometheus.Gauge
-	RequestCount           prometheus.Counter
-	RequestPerSecond       prometheus.Gauge
-	RequestPerMinute       prometheus.Gauge
-	TotalConnEstablished   prometheus.Counter
-	EstablishedConnections prometheus.Gauge
-	ActiveConnections      prometheus.Gauge
-	IdleConnections        prometheus.Gauge
-	RequestForbidden       struct {
-		Videoplayback prometheus.Counter
-		Vi            prometheus.Counter
-		Ggpht         prometheus.Counter
-	}
-}
-
-var metrics = Metrics{
-	Uptime: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_uptime",
-	}),
-	RequestCount: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_request_count",
-	}),
-	RequestPerSecond: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_request_per_second",
-	}),
-	RequestPerMinute: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_request_per_minute",
-	}),
-	TotalConnEstablished: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_total_conn_established",
-	}),
-	EstablishedConnections: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_established_conns",
-	}),
-	ActiveConnections: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_active_conns",
-	}),
-	IdleConnections: prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "http3_ytproxy_idle_conns",
-	}),
-
-	RequestForbidden: struct {
-		Videoplayback prometheus.Counter
-		Vi            prometheus.Counter
-		Ggpht         prometheus.Counter
-	}{
-		Videoplayback: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "http3_ytproxy_request_forbidden_videoplayback",
-		}),
-		Vi: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "http3_ytproxy_request_forbidden_vi",
-		}),
-		Ggpht: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "http3_ytproxy_request_forbidden_ggpht",
-		}),
-	},
-}
-
-func root(w http.ResponseWriter, req *http.Request) {
-	const msg = `
-	HTTP youtube proxy for https://inv.nadeko.net
-	https://git.nadeko.net/Fijxu/http3-ytproxy
-
-	Routes:
-	/stats
-	/health`
-	io.WriteString(w, msg)
-}
-
-// CustomHandler wraps the default promhttp.Handler with custom logic
-func metricsHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		// To prevent accessing from the bare IP address
-		if req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil {
-			w.WriteHeader(444)
-			return
-		}
-
-		metrics.Uptime.Set(float64(time.Duration(time.Since(programInit).Seconds())))
-		promhttp.Handler().ServeHTTP(w, req)
-	})
-}
-
-func stats(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	stats_.Uptime = time.Duration(time.Since(programInit).Seconds())
-	// stats_.TotalEstablished = int64(cw.totalEstablished)
-	// stats_.EstablishedConnections = int64(cw.established)
-	// stats_.ActiveConnections = int64(cw.active)
-	// stats_.IdleConnections = int64(cw.idle)
-
-	if err := json.NewEncoder(w).Encode(stats_); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func health(w http.ResponseWriter, req *http.Request) {
-	w.WriteHeader(200)
-	io.WriteString(w, "OK")
-}
-
 func requestPerSecond() {
 	var last int64
 	for {
 		time.Sleep(1 * time.Second)
 		current := stats_.RequestCount
 		stats_.RequestPerSecond = current - last
-		metrics.RequestPerSecond.Set(float64(stats_.RequestPerSecond))
+		metrics.Metrics.RequestPerSecond.Set(float64(stats_.RequestPerSecond))
 		last = current
 	}
 }
@@ -325,7 +94,7 @@ func requestPerMinute() {
 		time.Sleep(60 * time.Second)
 		current := stats_.RequestCount
 		stats_.RequestPerMinute = current - last
-		metrics.RequestPerMinute.Set(float64(stats_.RequestPerMinute))
+		metrics.Metrics.RequestPerMinute.Set(float64(stats_.RequestPerMinute))
 		last = current
 	}
 }
@@ -371,7 +140,7 @@ func blockChecker(gh string, cooldown int) {
 			body := "{\"status\":\"stopped\"}\""
 			// This should never fail too
 			request, _ := http.NewRequest("PUT", url, strings.NewReader(body))
-			_, err = client.Do(request)
+			_, err = httpc.Client.Do(request)
 			if err != nil {
 				log.Printf("[ERROR] Failed to send request to gluetun.")
 			} else {
@@ -383,7 +152,7 @@ func blockChecker(gh string, cooldown int) {
 
 func beforeMisc(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		defer panicHandler(w)
+		defer utils.PanicHandler(w)
 
 		// To prevent accessing from the bare IP address
 		if domain_only_access && (req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil) {
@@ -397,7 +166,7 @@ func beforeMisc(next http.HandlerFunc) http.HandlerFunc {
 
 func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		defer panicHandler(w)
+		defer utils.PanicHandler(w)
 
 		// To prevent accessing from the bare IP address
 		if domain_only_access && (req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil) {
@@ -428,7 +197,7 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		atomic.AddInt64(&stats_.RequestCount, 1)
-		metrics.RequestCount.Inc()
+		metrics.Metrics.RequestCount.Inc()
 		next(w, req)
 	}
 }
@@ -493,23 +262,24 @@ func main() {
 	if bc_cooldown == "" {
 		bc_cooldown = "60"
 	}
-	proxy = os.Getenv("PROXY")
+	httpc.Proxy = os.Getenv("PROXY")
 
 	flag.BoolVar(&https, "https", https, "Use built-in https server (recommended)")
 	flag.BoolVar(&h3c, "h3c", h3c, "Use HTTP/3 for client requests (high CPU usage)")
 	flag.BoolVar(&h3s, "h3s", h3s, "Use HTTP/3 for server requests, (requires HTTPS)")
-	flag.BoolVar(&ipv6_only, "ipv6_only", ipv6_only, "Only use ipv6 for requests")
+	flag.BoolVar(&httpc.Ipv6_only, "ipv6_only", httpc.Ipv6_only, "Only use ipv6 for requests")
 	flag.StringVar(&tls_cert, "tls-cert", tls_cert, "TLS Certificate path")
 	flag.StringVar(&tls_key, "tls-key", tls_key, "TLS Certificate Key path")
 	flag.StringVar(&sock, "s", sock, "Specify a socket name")
 	flag.StringVar(&port, "p", port, "Specify a port number")
 	flag.StringVar(&host, "l", host, "Specify a listen address")
 	flag.Parse()
+	httpc.Ipv6_only = ipv6
 
 	if h3c {
-		client = h3client
+		httpc.Client = httpc.H3client
 	} else {
-		client = h2client
+		httpc.Client = httpc.H2client
 	}
 
 	if https {
@@ -522,37 +292,25 @@ func main() {
 		}
 	}
 
-	ipv6_only = ipv6
-
 	mux := http.NewServeMux()
 
 	// MISC ROUTES
-	mux.HandleFunc("/", beforeMisc(root))
-	mux.HandleFunc("/health", beforeMisc(health))
-	mux.HandleFunc("/stats", beforeMisc(stats))
+	mux.HandleFunc("/", beforeMisc(paths.Root))
+	mux.HandleFunc("/health", beforeMisc(paths.Health))
+	mux.HandleFunc("/stats", beforeMisc(paths.Stats))
 
-	prometheus.MustRegister(metrics.Uptime)
-	prometheus.MustRegister(metrics.ActiveConnections)
-	prometheus.MustRegister(metrics.IdleConnections)
-	prometheus.MustRegister(metrics.EstablishedConnections)
-	prometheus.MustRegister(metrics.TotalConnEstablished)
-	prometheus.MustRegister(metrics.RequestCount)
-	prometheus.MustRegister(metrics.RequestPerSecond)
-	prometheus.MustRegister(metrics.RequestPerMinute)
-	prometheus.MustRegister(metrics.RequestForbidden.Videoplayback)
-	prometheus.MustRegister(metrics.RequestForbidden.Vi)
-	prometheus.MustRegister(metrics.RequestForbidden.Ggpht)
+	metrics.Register()
 
-	mux.Handle("/metrics", metricsHandler())
+	mux.Handle("/metrics", paths.MetricsHandler())
 
 	// PROXY ROUTES
-	mux.HandleFunc("/videoplayback", beforeProxy(videoplayback))
-	mux.HandleFunc("/vi/", beforeProxy(vi))
-	mux.HandleFunc("/vi_webp/", beforeProxy(vi))
-	mux.HandleFunc("/sb/", beforeProxy(vi))
-	mux.HandleFunc("/ggpht/", beforeProxy(ggpht))
-	mux.HandleFunc("/a/", beforeProxy(ggpht))
-	mux.HandleFunc("/ytc/", beforeProxy(ggpht))
+	mux.HandleFunc("/videoplayback", beforeProxy(paths.Videoplayback))
+	mux.HandleFunc("/vi/", beforeProxy(paths.Vi))
+	mux.HandleFunc("/vi_webp/", beforeProxy(paths.Vi))
+	mux.HandleFunc("/sb/", beforeProxy(paths.Vi))
+	mux.HandleFunc("/ggpht/", beforeProxy(paths.Ggpht))
+	mux.HandleFunc("/a/", beforeProxy(paths.Ggpht))
+	mux.HandleFunc("/ytc/", beforeProxy(paths.Ggpht))
 
 	go requestPerSecond()
 	go requestPerMinute()

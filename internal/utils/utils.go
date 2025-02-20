@@ -1,13 +1,34 @@
-package main
+package utils
 
 import (
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
 )
 
-func copyHeaders(from http.Header, to http.Header, length bool) {
+const (
+	path_prefix = ""
+)
+
+var strip_headers = []string{
+	"Accept-Encoding",
+	"Authorization",
+	"Origin",
+	"Referer",
+	"Cookie",
+	"Set-Cookie",
+	"Etag",
+	"Alt-Svc",
+	"Server",
+	"Cache-Control",
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/report-to
+	"report-to",
+}
+
+func CopyHeaders(from http.Header, to http.Header, length bool) {
 	// Loop over header names
 outer:
 	for name, values := range from {
@@ -28,14 +49,14 @@ outer:
 	}
 }
 
-func getBestThumbnail(path string) (newpath string) {
+func GetBestThumbnail(path string) (newpath string) {
 
 	formats := [4]string{"maxresdefault.jpg", "sddefault.jpg", "hqdefault.jpg", "mqdefault.jpg"}
 
 	for _, format := range formats {
 		newpath = strings.Replace(path, "maxres.jpg", format, 1)
 		url := "https://i.ytimg.com" + newpath
-		resp, _ := h2client.Head(url)
+		resp, _ := httpc.Client.Head(url)
 		if resp.StatusCode == 200 {
 			return newpath
 		}
@@ -56,7 +77,7 @@ func RelativeUrl(in string) (newurl string) {
 	return segment_url.RequestURI()
 }
 
-func panicHandler(w http.ResponseWriter) {
+func PanicHandler(w http.ResponseWriter) {
 	if r := recover(); r != nil {
 		log.Printf("Panic: %v", r)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

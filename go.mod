@@ -1,4 +1,4 @@
-module git.nadeko.net/Fijxu/http3-ytproxy/v3
+module git.nadeko.net/Fijxu/http3-ytproxy
 
 go 1.22.0
 

@@ -24,18 +24,16 @@ import (
 	"github.com/quic-go/quic-go/http3"
 )
 
-var h3s bool
-
-var domain_only_access bool = false
-
-var version string
-
 type ConnectionWatcher struct {
 	totalEstablished int64
 	established      int64
 	active           int64
 	idle             int64
 }
+
+var h3s bool
+var version string
+var cw ConnectionWatcher
 
 // https://stackoverflow.com/questions/51317122/how-to-get-number-of-idle-and-active-connections-in-go
 // OnStateChange records open connections in response to connection
@@ -52,8 +50,6 @@ func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) 
 		metrics.Metrics.EstablishedConnections.Dec()
 	}
 }
-
-var cw ConnectionWatcher
 
 var tx uint64
 
@@ -109,13 +105,6 @@ func blockChecker(gh string, cooldown int) {
 func beforeMisc(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		defer utils.PanicHandler(w)
-
-		// To prevent accessing from the bare IP address
-		if domain_only_access && (req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil) {
-			w.WriteHeader(444)
-			return
-		}
-
 		next(w, req)
 	}
 }
@@ -123,12 +112,6 @@ func beforeMisc(next http.HandlerFunc) http.HandlerFunc {
 func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		defer utils.PanicHandler(w)
-
-		// To prevent accessing from the bare IP address
-		if domain_only_access && (req.Host == "" || net.ParseIP(strings.Split(req.Host, ":")[0]) != nil) {
-			w.WriteHeader(444)
-			return
-		}
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "*")
@@ -193,9 +176,6 @@ func main() {
 	}
 	if strings.ToLower(getenv("BLOCK_CHECKER")) == "false" {
 		bc = false
-	}
-	if strings.ToLower(getenv("DOMAIN_ONLY_ACCESS")) == "true" {
-		domain_only_access = true
 	}
 
 	tls_cert := getenv("TLS_CERT")

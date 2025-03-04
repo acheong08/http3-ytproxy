@@ -176,11 +176,15 @@ func main() {
 	defaultTLSCert := "/data/cert.pem"
 	defaultTLSKey := "/data/key.key"
 
+	var http_server bool = true
 	var https bool = false
 	var h3c bool = false
 	var ipv6 bool = false
 	var bc bool = true
 
+	if strings.ToLower(getenv("HTTP")) == "true" {
+		http_server = true
+	}
 	if strings.ToLower(getenv("HTTPS")) == "true" {
 		https = true
 	}
@@ -339,34 +343,38 @@ func main() {
 		go srv.Serve(socket_listener)
 		log.Println("Unix socket listening at:", string(sock))
 
-		if https {
-			if _, err := os.Open(tls_cert); errors.Is(err, os.ErrNotExist) {
-				log.Panicf("Certificate file does not exist at path '%s'", tls_cert)
-			}
-
-			if _, err := os.Open(tls_key); errors.Is(err, os.ErrNotExist) {
-				log.Panicf("Key file does not exist at path '%s'", tls_key)
-			}
-
-			log.Println("Serving HTTPS at port", string(port)+"/tcp")
-			go func() {
-				if err := srv.ServeTLS(ln, tls_cert, tls_key); err != nil {
-					log.Fatal("Failed to server HTTP/2", err.Error())
+		if http_server {
+			if https {
+				if _, err := os.Open(tls_cert); errors.Is(err, os.ErrNotExist) {
+					log.Panicf("Certificate file does not exist at path '%s'", tls_cert)
 				}
-			}()
-			if h3s {
-				log.Println("Serving HTTP/3 (HTTPS) via QUIC at port", string(port)+"/udp")
+
+				if _, err := os.Open(tls_key); errors.Is(err, os.ErrNotExist) {
+					log.Panicf("Key file does not exist at path '%s'", tls_key)
+				}
+
+				log.Println("Serving HTTPS at port", string(port)+"/tcp")
+
 				go func() {
-					if err := srvh3.ListenAndServeTLS(tls_cert, tls_key); err != nil {
-						log.Fatal("Failed to serve HTTP/3:", err.Error())
+					if err := srv.ServeTLS(ln, tls_cert, tls_key); err != nil {
+						log.Fatal("Failed to server HTTP/2", err.Error())
 					}
 				}()
-			}
-			select {}
-		} else {
-			log.Println("Serving HTTP at port", string(port))
-			if err := srv.Serve(ln); err != nil {
-				log.Fatal(err)
+
+				if h3s {
+					log.Println("Serving HTTP/3 (HTTPS) via QUIC at port", string(port)+"/udp")
+					go func() {
+						if err := srvh3.ListenAndServeTLS(tls_cert, tls_key); err != nil {
+							log.Fatal("Failed to serve HTTP/3:", err.Error())
+						}
+					}()
+				}
+				select {}
+			} else {
+				log.Println("Serving HTTP at port", string(port))
+				if err := srv.Serve(ln); err != nil {
+					log.Fatal(err)
+				}
 			}
 		}
 	}

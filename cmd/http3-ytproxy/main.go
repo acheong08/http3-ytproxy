@@ -163,6 +163,12 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func getenv(key string) string {
+	// `YTPROXY_` as a prefix
+	v, _ := syscall.Getenv("YTPROXY_" + key)
+	return v
+}
+
 func main() {
 	defaultHost := "0.0.0.0"
 	defaultPort := "8080"
@@ -175,55 +181,55 @@ func main() {
 	var ipv6 bool = false
 	var bc bool = true
 
-	if strings.ToLower(os.Getenv("HTTPS")) == "true" {
+	if strings.ToLower(getenv("HTTPS")) == "true" {
 		https = true
 	}
-	if strings.ToLower(os.Getenv("H3C")) == "true" {
+	if strings.ToLower(getenv("H3C")) == "true" {
 		h3c = true
 	}
-	if strings.ToLower(os.Getenv("H3S")) == "true" {
+	if strings.ToLower(getenv("H3S")) == "true" {
 		h3s = true
 	}
-	if strings.ToLower(os.Getenv("IPV6_ONLY")) == "true" {
+	if strings.ToLower(getenv("IPV6_ONLY")) == "true" {
 		ipv6 = true
 	}
-	if strings.ToLower(os.Getenv("BLOCK_CHECKER")) == "false" {
+	if strings.ToLower(getenv("BLOCK_CHECKER")) == "false" {
 		bc = false
 	}
-	if strings.ToLower(os.Getenv("DOMAIN_ONLY_ACCESS")) == "true" {
+	if strings.ToLower(getenv("DOMAIN_ONLY_ACCESS")) == "true" {
 		domain_only_access = true
 	}
 
-	tls_cert := os.Getenv("TLS_CERT")
+	tls_cert := getenv("TLS_CERT")
 	if tls_cert == "" {
 		tls_cert = defaultTLSCert
 	}
-	tls_key := os.Getenv("TLS_KEY")
+	tls_key := getenv("TLS_KEY")
 	if tls_key == "" {
 		tls_key = defaultTLSKey
 	}
-	sock := os.Getenv("SOCK_PATH")
+	sock := getenv("SOCK_PATH")
 	if sock == "" {
 		sock = defaultSock
 	}
-	port := os.Getenv("PORT")
+	port := getenv("PORT")
 	if port == "" {
 		port = defaultPort
 	}
-	host := os.Getenv("HOST")
+	host := getenv("HOST")
 	if host == "" {
 		host = defaultHost
 	}
 	// gh is where the gluetun api is located
-	gh := os.Getenv("GLUETUN_HOSTNAME")
+	gh := getenv("GLUETUN_HOSTNAME")
 	if gh == "" {
 		gh = "127.0.0.1:8000"
 	}
-	bc_cooldown := os.Getenv("BLOCK_CHECKER_COOLDOWN")
+	bc_cooldown := getenv("BLOCK_CHECKER_COOLDOWN")
 	if bc_cooldown == "" {
 		bc_cooldown = "60"
 	}
-	httpc.Proxy = os.Getenv("PROXY")
+	httpc.Proxy = getenv("PROXY")
 
 	flag.BoolVar(&https, "https", https, "Use built-in https server (recommended)")
 	flag.BoolVar(&h3c, "h3c", h3c, "Use HTTP/3 for client requests (high CPU usage)")

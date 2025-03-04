@@ -19,15 +19,9 @@ import (
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/metrics"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/paths"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
-	"github.com/conduitio/bwlimit"
 	"github.com/prometheus/procfs"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-)
-
-var (
-	wl = flag.Int("w", 8000, "Write limit in Kbps")
-	rl = flag.Int("r", 8000, "Read limit in Kbps")
 )
 
 var h3s bool
@@ -290,25 +284,12 @@ func main() {
 		go blockChecker(gh, num)
 	}
 
-	ln, err := net.Listen("tcp", host+":"+port)
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
-
-	// 1Kbit = 125Bytes
-	var (
-		writeLimit = bwlimit.Byte(*wl) * bwlimit.Byte(125)
-		readLimit  = bwlimit.Byte(*rl) * bwlimit.Byte(125)
-	)
-
-	ln = bwlimit.NewListener(ln, writeLimit, readLimit)
-	// srvDialer := bwlimit.NewDialer(&net.Dialer{}, writeLimit, readLimit)
-
 	srv := &http.Server{
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
 		ConnState:    cw.OnStateChange,
+		Addr:         host + ":" + port,
 	}
 
 	srvh3 := &http3.Server{
@@ -356,7 +337,7 @@ func main() {
 				log.Println("Serving HTTPS at port", string(port)+"/tcp")
 
 				go func() {
-					if err := srv.ServeTLS(ln, tls_cert, tls_key); err != nil {
+					if err := srv.ListenAndServeTLS(tls_cert, tls_key); err != nil {
 						log.Fatal("Failed to server HTTP/2", err.Error())
 					}
 				}()
@@ -372,7 +353,7 @@ func main() {
 				select {}
 			} else {
 				log.Println("Serving HTTP at port", string(port))
-				if err := srv.Serve(ln); err != nil {
+				if err := srv.ListenAndServe(); err != nil {
 					log.Fatal(err)
 				}
 			}

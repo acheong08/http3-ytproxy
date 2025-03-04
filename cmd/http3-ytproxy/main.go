@@ -34,6 +34,7 @@ type ConnectionWatcher struct {
 var h3s bool
 var version string
 var cw ConnectionWatcher
+var tx uint64
 
 // https://stackoverflow.com/questions/51317122/how-to-get-number-of-idle-and-active-connections-in-go
 // OnStateChange records open connections in response to connection
@@ -44,14 +45,10 @@ func (cw *ConnectionWatcher) OnStateChange(conn net.Conn, state http.ConnState) 
 	case http.StateNew:
 		metrics.Metrics.EstablishedConnections.Inc()
 		metrics.Metrics.TotalConnEstablished.Inc()
-	// case http.StateActive:
-	// 	atomic.AddInt64(&cw.active, 1)
 	case http.StateClosed, http.StateHijacked:
 		metrics.Metrics.EstablishedConnections.Dec()
 	}
 }
-
-var tx uint64
 
 func blockCheckerCalc(p *procfs.Proc) {
 	var last uint64
@@ -273,14 +270,16 @@ func main() {
 	}
 
 	srvh3 := &http3.Server{
-		Handler:         mux,
-		EnableDatagrams: false, // https://quic.video/blog/never-use-datagrams/ (Read it)
+		Handler: mux,
+		// https://quic.video/blog/never-use-datagrams/ (Read it)
+		EnableDatagrams: false,
 		IdleTimeout:     120 * time.Second,
 		TLSConfig:       http3.ConfigureTLSConfig(&tls.Config{}),
 		QUICConfig: &quic.Config{
-			// KeepAlivePeriod:       10 * time.Second,
-			MaxIncomingStreams:    256, // I'm not sure if this is correct.
-			MaxIncomingUniStreams: 256, // Same as above
+			// I'm not sure if this is correct.
+			MaxIncomingStreams: 256,
+			// Same as above.
+			MaxIncomingUniStreams: 256,
 		},
 		Addr: host + ":" + port,
 	}
@@ -292,6 +291,7 @@ func main() {
 		log.Println("Failed to bind to UDS, please check the socket name", err.Error())
 	} else {
 		defer socket_listener.Close()
+
 		// To allow everyone to access the socket
 		err = os.Chmod(sock, 0777)
 		if err != nil {
@@ -318,7 +318,7 @@ func main() {
 
 				go func() {
 					if err := srv.ListenAndServeTLS(tls_cert, tls_key); err != nil {
-						log.Fatal("Failed to server HTTP/2", err.Error())
+						log.Fatal("Failed to serve HTTP/2", err.Error())
 					}
 				}()
 
@@ -330,6 +330,7 @@ func main() {
 						}
 					}()
 				}
+
 				select {}
 			} else {
 				log.Println("Serving HTTP at port", string(port))

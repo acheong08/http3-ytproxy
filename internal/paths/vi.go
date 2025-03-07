@@ -53,8 +53,6 @@ func Vi(w http.ResponseWriter, req *http.Request) {
 
 	defer resp.Body.Close()
 
-	// NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
-	// copyHeaders(resp.Header, w.Header(), NoRewrite)
 	w.WriteHeader(resp.StatusCode)
 
 	io.Copy(w, resp.Body)

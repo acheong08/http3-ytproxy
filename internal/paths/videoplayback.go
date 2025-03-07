@@ -74,41 +74,9 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	c := q.Get("c")
-	// if c == "" {
-	// 	w.WriteHeader(400)
-	// 	io.WriteString(w, "'c' query string undefined.")
-	// 	return
-	// }
 
 	host := q.Get("host")
 	q.Del("host")
-
-	// if len(host) <= 0 {
-	// 	// Fallback to use mvi and mn to build a host
-	// 	mvi := q.Get("mvi")
-	// 	mn := strings.Split(q.Get("mn"), ",")
-
-	// 	if len(mvi) <= 0 {
-	// 		w.WriteHeader(400)
-	// 		io.WriteString(w, "'mvi' query string undefined")
-	// 		return
-	// 	}
-
-	// 	if len(mn) <= 0 {
-	// 		w.WriteHeader(400)
-	// 		io.WriteString(w, "'mn' query string undefined")
-	// 		return
-	// 	}
-
-	// 	host = "rr" + mvi + "---" + mn[0] + ".googlevideo.com"
-	// }
-
-	// if c == "WEB" {
-	// 	q.Set("alr", "yes")
-	// }
-	// if req.Header.Get("Range") != "" {
-	// 	q.Set("range", req.Header.Get("Range"))
-	// }
 
 	if req.Header.Get("Range") != "" {
 		q.Set("range", strings.Split(req.Header.Get("Range"), "=")[1])

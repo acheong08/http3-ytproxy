@@ -110,6 +110,10 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	// 	q.Set("range", req.Header.Get("Range"))
 	// }
 
+	if req.Header.Get("Range") != "" {
+		q.Set("range", strings.Split(req.Header.Get("Range"), "=")[1])
+	}
+
 	path := req.URL.EscapedPath()
 
 	proxyURL, err := url.Parse("https://" + host + path)
@@ -130,8 +134,9 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Panic("Failed to create headRequest:", err)
 	}
-	utils.CopyHeaders(req.Header, postRequest.Header, false)
-	utils.CopyHeaders(req.Header, headRequest.Header, false)
+
+	postRequest.Header = videoplayback_headers
+	headRequest.Header = videoplayback_headers
 
 	switch c {
 	case "ANDROID":
@@ -147,11 +152,6 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		postRequest.Header.Set("User-Agent", default_ua)
 		headRequest.Header.Set("User-Agent", default_ua)
 	}
-
-	postRequest.Header.Add("Origin", "https://www.youtube.com")
-	headRequest.Header.Add("Origin", "https://www.youtube.com")
-	postRequest.Header.Add("Referer", "https://www.youtube.com/")
-	headRequest.Header.Add("Referer", "https://www.youtube.com/")
 
 	resp := &http.Response{}
 

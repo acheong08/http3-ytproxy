@@ -1,6 +1,9 @@
 package paths
 
-import "regexp"
+import (
+	"net/http"
+	"regexp"
+)
 
 const (
 	default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
@@ -30,4 +33,12 @@ var strip_headers = []string{
 	"Cache-Control",
 	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/report-to
 	"report-to",
+}
+
+var videoplayback_headers = http.Header{
+	"Accept":          {"*/*"},
+	"Accept-Encoding": {"gzip, deflate, br, zstd"},
+	"Accept-Language": {"en-us,en;q=0.5"},
+	"Origin":          {"https://www.youtube.com"},
+	"Referer":         {"https://www.youtube.com/"},
 }

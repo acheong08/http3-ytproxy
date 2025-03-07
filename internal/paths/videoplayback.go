@@ -100,9 +100,6 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		log.Panic("Failed to create headRequest:", err)
 	}
 
-	postRequest.Header = videoplayback_headers
-	headRequest.Header = videoplayback_headers
-
 	switch c {
 	case "ANDROID":
 		postRequest.Header.Set("User-Agent", "com.google.android.youtube/1537338816 (Linux; U; Android 13; en_US; ; Build/TQ2A.230505.002; Cronet/113.0.5672.24)")
@@ -117,6 +114,9 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		postRequest.Header.Set("User-Agent", default_ua)
 		headRequest.Header.Set("User-Agent", default_ua)
 	}
+
+	postRequest.Header = videoplayback_headers
+	headRequest.Header = videoplayback_headers
 
 	resp := &http.Response{}
 

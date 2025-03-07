@@ -123,10 +123,7 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 
 	proxyURL.RawQuery = q.Encode()
 
-	// https://github.com/FreeTubeApp/FreeTube/blob/5a4cd981cdf2c2a20ab68b001746658fd0c6484e/src/renderer/components/ft-shaka-video-player/ft-shaka-video-player.js#L1097
-	body := []byte{0x78, 0} // protobuf body
-
-	postRequest, err := http.NewRequest("POST", proxyURL.String(), bytes.NewReader(body))
+	postRequest, err := http.NewRequest("POST", proxyURL.String(), bytes.NewReader(protobuf_body))
 	if err != nil {
 		log.Panic("Failed to create postRequest:", err)
 	}
@@ -184,8 +181,7 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 
 	defer resp.Body.Close()
 
-	NoRewrite := strings.HasPrefix(resp.Header.Get("Content-Type"), "audio") || strings.HasPrefix(resp.Header.Get("Content-Type"), "video")
-	utils.CopyHeaders(resp.Header, w.Header(), NoRewrite)
+	utils.CopyHeadersNew(resp.Header, w.Header())
 
 	w.WriteHeader(resp.StatusCode)
 

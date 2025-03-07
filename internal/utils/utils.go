@@ -9,25 +9,6 @@ import (
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
 )
 
-const (
-	path_prefix = ""
-)
-
-var strip_headers = []string{
-	"Accept-Encoding",
-	"Authorization",
-	"Origin",
-	"Referer",
-	"Cookie",
-	"Set-Cookie",
-	"Etag",
-	"Alt-Svc",
-	"Server",
-	"Cache-Control",
-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/report-to
-	"report-to",
-}
-
 func CopyHeaders(from http.Header, to http.Header, length bool) {
 	// Loop over header names
 outer:
@@ -44,6 +25,16 @@ outer:
 					continue
 				}
 				to.Set(name, value)
+			}
+		}
+	}
+}
+
+func CopyHeadersNew(from http.Header, to http.Header) {
+	for from_header, value := range from {
+		for _, header := range headers_for_response {
+			if from_header == header {
+				to.Add(header, value[0])
 			}
 		}
 	}

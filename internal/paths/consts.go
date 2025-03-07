@@ -20,21 +20,6 @@ var allowed_hosts = []string{
 	"googleusercontent.com",
 }
 
-var strip_headers = []string{
-	"Accept-Encoding",
-	"Authorization",
-	"Origin",
-	"Referer",
-	"Cookie",
-	"Set-Cookie",
-	"Etag",
-	"Alt-Svc",
-	"Server",
-	"Cache-Control",
-	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/report-to
-	"report-to",
-}
-
 var videoplayback_headers = http.Header{
 	"Accept":          {"*/*"},
 	"Accept-Encoding": {"gzip, deflate, br, zstd"},
@@ -42,3 +27,6 @@ var videoplayback_headers = http.Header{
 	"Origin":          {"https://www.youtube.com"},
 	"Referer":         {"https://www.youtube.com/"},
 }
+
+// https://github.com/FreeTubeApp/FreeTube/blob/5a4cd981cdf2c2a20ab68b001746658fd0c6484e/src/renderer/components/ft-shaka-video-player/ft-shaka-video-player.js#L1097
+var protobuf_body = []byte{0x78, 0} // protobuf body

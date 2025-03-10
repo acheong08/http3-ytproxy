@@ -73,8 +73,6 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	c := q.Get("c")
-
 	host := q.Get("host")
 	q.Del("host")
 
@@ -100,23 +98,8 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		log.Panic("Failed to create headRequest:", err)
 	}
 
-	switch c {
-	case "ANDROID":
-		postRequest.Header.Set("User-Agent", "com.google.android.youtube/1537338816 (Linux; U; Android 13; en_US; ; Build/TQ2A.230505.002; Cronet/113.0.5672.24)")
-		headRequest.Header.Set("User-Agent", "com.google.android.youtube/1537338816 (Linux; U; Android 13; en_US; ; Build/TQ2A.230505.002; Cronet/113.0.5672.24)")
-	case "IOS":
-		postRequest.Header.Set("User-Agent", "com.google.ios.youtube/19.32.8 (iPhone14,5; U; CPU iOS 17_6 like Mac OS X;)")
-		headRequest.Header.Set("User-Agent", "com.google.ios.youtube/19.32.8 (iPhone14,5; U; CPU iOS 17_6 like Mac OS X;)")
-	case "WEB":
-		postRequest.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
-		headRequest.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
-	default:
-		postRequest.Header.Set("User-Agent", default_ua)
-		headRequest.Header.Set("User-Agent", default_ua)
-	}
-
-	postRequest.Header = videoplayback_headers
-	headRequest.Header = videoplayback_headers
+	postRequest.Header = *videoplayback_headers
+	headRequest.Header = *videoplayback_headers
 
 	resp := &http.Response{}
 

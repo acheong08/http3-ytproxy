@@ -153,6 +153,7 @@ func main() {
 	var http_server bool = true
 	var https bool = false
 	var h3c bool = false
+	var h2c bool = false
 	var ipv6 bool = false
 	var bc bool = true
 
@@ -161,6 +162,9 @@ func main() {
 	}
 	if strings.ToLower(getenv("HTTPS")) == "true" {
 		https = true
+	}
+	if strings.ToLower(getenv("H2C")) == "true" {
+		h2c = true
 	}
 	if strings.ToLower(getenv("H3C")) == "true" {
 		h3c = true
@@ -219,9 +223,14 @@ func main() {
 	httpc.Ipv6_only = ipv6
 
 	if h3c {
+		log.Println("[INFO] Using HTTP/3 Client")
 		httpc.Client = httpc.H3client
-	} else {
+	} else if h2c {
+		log.Println("[INFO] Using HTTP/2 Client")
 		httpc.Client = httpc.H2client
+	} else {
+		log.Println("[INFO] Using HTTP/1.1 Client")
+		httpc.Client = httpc.H1_1client
 	}
 
 	if https {

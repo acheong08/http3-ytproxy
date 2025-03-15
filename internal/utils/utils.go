@@ -1,10 +1,13 @@
 package utils
 
 import (
+	"crypto/aes"
+	"encoding/base64"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
 )
@@ -73,4 +76,34 @@ func PanicHandler(w http.ResponseWriter) {
 		log.Printf("Panic: %v", r)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
+}
+
+func Getenv(key string) string {
+	// `YTPROXY_` as a prefix
+	v, _ := syscall.Getenv("YTPROXY_" + key)
+	return v
+}
+
+// https://stackoverflow.com/a/41652605
+func DecryptQueryParams(encryptedQuery string, key string) (string, error) {
+	se, err := base64.URLEncoding.DecodeString(encryptedQuery)
+	if err != nil {
+		log.Println("[ERROR] Error when decoding base64 string:", err)
+		return "", err
+	}
+
+	cipher, err := aes.NewCipher([]byte(key)[0:16])
+	if err != nil {
+		log.Println("[ERROR] Error initializating cipher.Block:", err)
+		return "", err
+	}
+	decrypted := make([]byte, len(se))
+	size := 16
+
+	for bs, be := 0, size; bs < len(se); bs, be = bs+size, be+size {
+		cipher.Decrypt(decrypted[bs:be], se[bs:be])
+	}
+
+	paddingSize := int(decrypted[len(decrypted)-1])
+	return string(decrypted[0 : len(decrypted)-paddingSize]), nil
 }

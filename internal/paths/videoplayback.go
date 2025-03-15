@@ -56,6 +56,19 @@ func checkRequest(w http.ResponseWriter, req *http.Request, params url.Values) {
 func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 
+	if q.Get("enc") == "yes" {
+		deencryptedQueryParams, err := utils.DecryptQueryParams(req.URL.Query().Get("data"), secret_key)
+		if err != nil {
+			http.Error(w, "Internal Server Error:\nFailed to decrypt query parameters", http.StatusInternalServerError)
+			return
+		}
+		q, err = url.ParseQuery(deencryptedQueryParams)
+		if err != nil {
+			http.Error(w, "Internal Server Error:\nFailed to parse query parameters from the decrypted query parameters", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	checkRequest(w, req, q)
 
 	expire, err := strconv.ParseInt(q.Get("expire"), 10, 64)

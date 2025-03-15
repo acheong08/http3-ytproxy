@@ -137,12 +137,6 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func getenv(key string) string {
-	// `YTPROXY_` as a prefix
-	v, _ := syscall.Getenv("YTPROXY_" + key)
-	return v
-}
-
 func main() {
 	defaultHost := "0.0.0.0"
 	defaultPort := "8080"
@@ -157,58 +151,58 @@ func main() {
 	var ipv6 bool = false
 	var bc bool = true
 
-	if strings.ToLower(getenv("HTTP")) == "true" {
+	if strings.ToLower(utils.Getenv("HTTP")) == "true" {
 		http_server = true
 	}
-	if strings.ToLower(getenv("HTTPS")) == "true" {
+	if strings.ToLower(utils.Getenv("HTTPS")) == "true" {
 		https = true
 	}
-	if strings.ToLower(getenv("H2C")) == "true" {
+	if strings.ToLower(utils.Getenv("H2C")) == "true" {
 		h2c = true
 	}
-	if strings.ToLower(getenv("H3C")) == "true" {
+	if strings.ToLower(utils.Getenv("H3C")) == "true" {
 		h3c = true
 	}
-	if strings.ToLower(getenv("H3S")) == "true" {
+	if strings.ToLower(utils.Getenv("H3S")) == "true" {
 		h3s = true
 	}
-	if strings.ToLower(getenv("IPV6_ONLY")) == "true" {
+	if strings.ToLower(utils.Getenv("IPV6_ONLY")) == "true" {
 		ipv6 = true
 	}
-	if strings.ToLower(getenv("BLOCK_CHECKER")) == "false" {
+	if strings.ToLower(utils.Getenv("BLOCK_CHECKER")) == "false" {
 		bc = false
 	}
 
-	tls_cert := getenv("TLS_CERT")
+	tls_cert := utils.Getenv("TLS_CERT")
 	if tls_cert == "" {
 		tls_cert = defaultTLSCert
 	}
-	tls_key := getenv("TLS_KEY")
+	tls_key := utils.Getenv("TLS_KEY")
 	if tls_key == "" {
 		tls_key = defaultTLSKey
 	}
-	sock := getenv("SOCK_PATH")
+	sock := utils.Getenv("SOCK_PATH")
 	if sock == "" {
 		sock = defaultSock
 	}
-	port := getenv("PORT")
+	port := utils.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
 	}
-	host := getenv("HOST")
+	host := utils.Getenv("HOST")
 	if host == "" {
 		host = defaultHost
 	}
 	// gh is where the gluetun api is located
-	gh := getenv("GLUETUN_HOSTNAME")
+	gh := utils.Getenv("GLUETUN_HOSTNAME")
 	if gh == "" {
 		gh = "127.0.0.1:8000"
 	}
-	bc_cooldown := getenv("BLOCK_CHECKER_COOLDOWN")
+	bc_cooldown := utils.Getenv("BLOCK_CHECKER_COOLDOWN")
 	if bc_cooldown == "" {
 		bc_cooldown = "60"
 	}
-	httpc.Proxy = getenv("PROXY")
+	httpc.Proxy = utils.Getenv("PROXY")
 
 	flag.BoolVar(&https, "https", https, "Use built-in https server (recommended)")
 	flag.BoolVar(&h3c, "h3c", h3c, "Use HTTP/3 for client requests (high CPU usage)")

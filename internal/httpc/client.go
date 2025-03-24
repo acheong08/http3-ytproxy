@@ -7,11 +7,10 @@ import (
 	"net/url"
 	"time"
 
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/config"
 	"github.com/quic-go/quic-go/http3"
 )
 
-var Ipv6_only = false
-var Proxy string
 var Client *http.Client
 
 var dialer = &net.Dialer{
@@ -34,7 +33,7 @@ var H1_1client = &http.Client{
 	Transport: &http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
 			var net string
-			if Ipv6_only {
+			if config.Cfg.Ipv6_only {
 				net = "tcp6"
 			} else {
 				net = "tcp4"
@@ -50,8 +49,8 @@ var H1_1client = &http.Client{
 		MaxIdleConnsPerHost:   10,
 		MaxIdleConns:          0,
 		Proxy: func(r *http.Request) (*url.URL, error) {
-			if Proxy != "" {
-				return url.Parse(Proxy)
+			if config.Cfg.Proxy != "" {
+				return url.Parse(config.Cfg.Proxy)
 			}
 			return nil, nil
 		},
@@ -68,7 +67,7 @@ var H2client = &http.Client{
 	Transport: &http.Transport{
 		Dial: func(network, addr string) (net.Conn, error) {
 			var net string
-			if Ipv6_only {
+			if config.Cfg.Ipv6_only {
 				net = "tcp6"
 			} else {
 				net = "tcp4"
@@ -85,8 +84,8 @@ var H2client = &http.Client{
 		MaxIdleConnsPerHost:   10,
 		MaxIdleConns:          0,
 		Proxy: func(r *http.Request) (*url.URL, error) {
-			if Proxy != "" {
-				return url.Parse(Proxy)
+			if config.Cfg.Proxy != "" {
+				return url.Parse(config.Cfg.Proxy)
 			}
 			return nil, nil
 		},

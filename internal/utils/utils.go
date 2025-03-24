@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"syscall"
 
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
 )
@@ -76,12 +75,6 @@ func PanicHandler(w http.ResponseWriter) {
 		log.Printf("Panic: %v", r)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
-}
-
-func Getenv(key string) string {
-	// `YTPROXY_` as a prefix
-	v, _ := syscall.Getenv("YTPROXY_" + key)
-	return v
 }
 
 // https://stackoverflow.com/a/41652605

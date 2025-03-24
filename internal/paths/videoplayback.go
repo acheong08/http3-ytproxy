@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/config"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/metrics"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
@@ -57,7 +58,7 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 
 	if q.Get("enc") == "yes" {
-		deencryptedQueryParams, err := utils.DecryptQueryParams(req.URL.Query().Get("data"), secret_key)
+		deencryptedQueryParams, err := utils.DecryptQueryParams(req.URL.Query().Get("data"), config.Cfg.Companion.Secret_key)
 		if err != nil {
 			http.Error(w, "Internal Server Error:\nFailed to decrypt query parameters", http.StatusInternalServerError)
 			return

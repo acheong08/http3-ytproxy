@@ -3,8 +3,6 @@ package paths
 import (
 	"net/http"
 	"regexp"
-
-	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
 )
 
 const (
@@ -33,5 +31,3 @@ var videoplayback_headers = &http.Header{
 
 // https://github.com/FreeTubeApp/FreeTube/blob/5a4cd981cdf2c2a20ab68b001746658fd0c6484e/src/renderer/components/ft-shaka-video-player/ft-shaka-video-player.js#L1097
 var protobuf_body = []byte{0x78, 0} // protobuf body
-
-var secret_key = utils.Getenv("SECRET_KEY")

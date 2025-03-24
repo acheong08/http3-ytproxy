@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/tls"
-	"errors"
 	"flag"
 	"io"
 	"log"
@@ -10,18 +8,16 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"git.nadeko.net/Fijxu/http3-ytproxy/internal/config"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/httpc"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/metrics"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/paths"
 	"git.nadeko.net/Fijxu/http3-ytproxy/internal/utils"
 	"github.com/prometheus/procfs"
-	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/http3"
 )
 
 type ConnectionWatcher struct {
@@ -31,7 +27,6 @@ type ConnectionWatcher struct {
 	idle             int64
 }
 
-var h3s bool
 var version string
 var cw ConnectionWatcher
 var tx uint64
@@ -117,10 +112,6 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Strict-Transport-Security", "max-age=86400")
 		w.Header().Set("X-Powered-By", "http3-ytproxy "+version+"-"+runtime.GOARCH)
 
-		if h3s {
-			w.Header().Set("Alt-Svc", "h3=\":8443\"; ma=86400")
-		}
-
 		if req.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -137,104 +128,34 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func init() {
+	config.LoadConfig()
+}
+
 func main() {
-	defaultHost := "0.0.0.0"
-	defaultPort := "8080"
-	defaultSock := "/tmp/http-ytproxy.sock"
-	defaultTLSCert := "/data/cert.pem"
-	defaultTLSKey := "/data/key.key"
-
-	var http_server bool = true
-	var https bool = false
-	var h3c bool = false
-	var h2c bool = false
-	var ipv6 bool = false
-	var bc bool = true
-
-	if strings.ToLower(utils.Getenv("HTTP")) == "true" {
-		http_server = true
-	}
-	if strings.ToLower(utils.Getenv("HTTPS")) == "true" {
-		https = true
-	}
-	if strings.ToLower(utils.Getenv("H2C")) == "true" {
-		h2c = true
-	}
-	if strings.ToLower(utils.Getenv("H3C")) == "true" {
-		h3c = true
-	}
-	if strings.ToLower(utils.Getenv("H3S")) == "true" {
-		h3s = true
-	}
-	if strings.ToLower(utils.Getenv("IPV6_ONLY")) == "true" {
-		ipv6 = true
-	}
-	if strings.ToLower(utils.Getenv("BLOCK_CHECKER")) == "false" {
-		bc = false
-	}
-
-	tls_cert := utils.Getenv("TLS_CERT")
-	if tls_cert == "" {
-		tls_cert = defaultTLSCert
-	}
-	tls_key := utils.Getenv("TLS_KEY")
-	if tls_key == "" {
-		tls_key = defaultTLSKey
-	}
-	sock := utils.Getenv("SOCK_PATH")
-	if sock == "" {
-		sock = defaultSock
-	}
-	port := utils.Getenv("PORT")
-	if port == "" {
-		port = defaultPort
-	}
-	host := utils.Getenv("HOST")
-	if host == "" {
-		host = defaultHost
-	}
-	// gh is where the gluetun api is located
-	gh := utils.Getenv("GLUETUN_HOSTNAME")
-	if gh == "" {
-		gh = "127.0.0.1:8000"
-	}
-	bc_cooldown := utils.Getenv("BLOCK_CHECKER_COOLDOWN")
-	if bc_cooldown == "" {
-		bc_cooldown = "60"
-	}
-	httpc.Proxy = utils.Getenv("PROXY")
-
-	flag.BoolVar(&https, "https", https, "Use built-in https server (recommended)")
-	flag.BoolVar(&h3c, "h3c", h3c, "Use HTTP/3 for client requests (high CPU usage)")
-	flag.BoolVar(&h3s, "h3s", h3s, "Use HTTP/3 for server requests, (requires HTTPS)")
-	flag.BoolVar(&httpc.Ipv6_only, "ipv6_only", httpc.Ipv6_only, "Only use ipv6 for requests")
-	flag.StringVar(&tls_cert, "tls-cert", tls_cert, "TLS Certificate path")
-	flag.StringVar(&tls_key, "tls-key", tls_key, "TLS Certificate Key path")
-	flag.StringVar(&sock, "s", sock, "Specify a socket name")
-	flag.StringVar(&port, "p", port, "Specify a port number")
-	flag.StringVar(&host, "l", host, "Specify a listen address")
+	flag.BoolVar(&config.Cfg.Enable_http, "http", config.Cfg.Enable_http, "Enable HTTP Server")
+	flag.BoolVar(&config.Cfg.Uds, "uds", config.Cfg.Uds, "Enable UDS (Unix socket domain)")
+	flag.IntVar(&config.Cfg.Http_client_ver, "http-client-ver", config.Cfg.Http_client_ver, "Specify the HTTP Version that is going to be used on the client, accepted values are '1', '2 'and '3'")
+	flag.BoolVar(&config.Cfg.Ipv6_only, "ipv6-only", config.Cfg.Ipv6_only, "Only use ipv6 for requests")
+	flag.StringVar(&config.Cfg.Uds_path, "s", config.Cfg.Uds_path, "Specify the UDS (Unix socket domain) path\nExample: /run/http3-ytproxy.sock")
+	flag.StringVar(&config.Cfg.Proxy, "pr", config.Cfg.Proxy, "Specify the proxy that is going to be used for requests\nExample: http://127.0.0.1:8090")
+	flag.StringVar(&config.Cfg.Port, "p", config.Cfg.Port, "Specify a port number")
+	flag.StringVar(&config.Cfg.Host, "l", config.Cfg.Host, "Specify a listen address")
 	flag.Parse()
-	httpc.Ipv6_only = ipv6
 
-	if h3c {
-		log.Println("[INFO] Using HTTP/3 Client")
-		httpc.Client = httpc.H3client
-	} else if h2c {
-		log.Println("[INFO] Using HTTP/2 Client")
-		httpc.Client = httpc.H2client
-	} else {
+	switch config.Cfg.Http_client_ver {
+	case 1:
 		log.Println("[INFO] Using HTTP/1.1 Client")
 		httpc.Client = httpc.H1_1client
-	}
-
-	if https {
-		if len(tls_cert) <= 0 {
-			log.Fatal("tls-cert argument is missing, you need a TLS certificate for HTTPS")
-		}
-
-		if len(tls_key) <= 0 {
-			log.Fatal("tls-key argument is missing, you need a TLS key for HTTPS")
-		}
+	case 2:
+		log.Println("[INFO] Using HTTP/2 Client")
+		httpc.Client = httpc.H2client
+	case 3:
+		log.Println("[INFO] Using HTTP/3 Client")
+		httpc.Client = httpc.H3client
+	default:
+		log.Println("[INFO] Using HTTP/1.1 Client")
+		httpc.Client = httpc.H1_1client
 	}
 
 	mux := http.NewServeMux()
@@ -256,12 +177,8 @@ func main() {
 	mux.HandleFunc("/a/", beforeProxy(paths.Ggpht))
 	mux.HandleFunc("/ytc/", beforeProxy(paths.Ggpht))
 
-	if bc {
-		num, err := strconv.Atoi(bc_cooldown)
-		if err != nil {
-			log.Fatalf("[FATAL] Error while setting BLOCK_CHECKER_COOLDOWN: %s", err)
-		}
-		go blockChecker(gh, num)
+	if config.Cfg.Gluetun.Block_checker {
+		go blockChecker(config.Cfg.Gluetun.Gluetun_api, config.Cfg.Gluetun.Block_checker_cooldown)
 	}
 
 	srv := &http.Server{
@@ -269,78 +186,39 @@ func main() {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 1 * time.Hour,
 		ConnState:    cw.OnStateChange,
-		Addr:         host + ":" + port,
+		Addr:         config.Cfg.Host + ":" + config.Cfg.Port,
 	}
 
-	srvh3 := &http3.Server{
-		Handler: mux,
-		// https://quic.video/blog/never-use-datagrams/ (Read it)
-		EnableDatagrams: false,
-		IdleTimeout:     120 * time.Second,
-		TLSConfig:       http3.ConfigureTLSConfig(&tls.Config{}),
-		QUICConfig: &quic.Config{
-			// I'm not sure if this is correct.
-			MaxIncomingStreams: 256,
-			// Same as above.
-			MaxIncomingUniStreams: 256,
-		},
-		Addr: host + ":" + port,
-	}
-
-	syscall.Unlink(sock)
-	socket_listener, err := net.Listen("unix", sock)
-
-	if err != nil {
-		log.Println("Failed to bind to UDS, please check the socket name", err.Error())
-	} else {
-		defer socket_listener.Close()
-
-		// To allow everyone to access the socket
-		err = os.Chmod(sock, 0777)
+	if config.Cfg.Uds {
+		syscall.Unlink(config.Cfg.Uds_path)
+		socket_listener, err := net.Listen("unix", config.Cfg.Uds_path)
 		if err != nil {
-			log.Println("Failed to set socket permissions to 777:", err.Error())
+			log.Println("[ERROR] Failed to bind to UDS, please check the socket path", err.Error())
+		}
+		defer socket_listener.Close()
+		err = os.Chmod(config.Cfg.Uds_path, 0777)
+		if err != nil {
+			log.Println("[ERROR] Failed to set socket permissions to 777:", err.Error())
 			return
 		} else {
-			log.Println("Setting socket permissions to 777")
+			log.Println("[INFO] Setting socket permissions to 777")
 		}
 
-		go srv.Serve(socket_listener)
-		log.Println("Unix socket listening at:", string(sock))
-
-		if http_server {
-			if https {
-				if _, err := os.Open(tls_cert); errors.Is(err, os.ErrNotExist) {
-					log.Panicf("Certificate file does not exist at path '%s'", tls_cert)
-				}
-
-				if _, err := os.Open(tls_key); errors.Is(err, os.ErrNotExist) {
-					log.Panicf("Key file does not exist at path '%s'", tls_key)
-				}
-
-				log.Println("Serving HTTPS at port", string(port)+"/tcp")
-
-				go func() {
-					if err := srv.ListenAndServeTLS(tls_cert, tls_key); err != nil {
-						log.Fatal("Failed to serve HTTP/2", err.Error())
-					}
-				}()
-
-				if h3s {
-					log.Println("Serving HTTP/3 (HTTPS) via QUIC at port", string(port)+"/udp")
-					go func() {
-						if err := srvh3.ListenAndServeTLS(tls_cert, tls_key); err != nil {
-							log.Fatal("Failed to serve HTTP/3:", err.Error())
-						}
-					}()
-				}
-
-				select {}
-			} else {
-				log.Println("Serving HTTP at port", string(port))
-				if err := srv.ListenAndServe(); err != nil {
-					log.Fatal(err)
-				}
+		go func() {
+			err := srv.Serve(socket_listener)
+			if err != nil {
+				log.Println("[ERROR] Failed to listen serve UDS:", err)
 			}
+		}()
+
+		// To allow everyone to access the socket
+		log.Println("[INFO] Unix socket listening at:", config.Cfg.Uds_path)
+	}
+
+	if config.Cfg.Enable_http {
+		log.Println("[INFO] Serving HTTP server at port", config.Cfg.Port)
+		if err := srv.ListenAndServe(); err != nil {
+			log.Fatalf("[FATAL] Failed to listen on '%s:%s': %s\n", config.Cfg.Host, config.Cfg.Port, err)
 		}
 	}
 }

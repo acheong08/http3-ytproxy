@@ -84,5 +84,8 @@ func LoadConfig() {
 			Block_checker:          getEnvBool("BLOCK_CHECKER", true),
 			Block_checker_cooldown: getEnvInt("BLOCK_CHECKER_COOLDOWN", 60),
 		},
+		Companion: struct{ Secret_key string }{
+			Secret_key: getEnvString("SECRET_KEY", ""),
+		},
 	}
 }

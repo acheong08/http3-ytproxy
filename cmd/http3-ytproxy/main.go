@@ -143,6 +143,8 @@ func main() {
 	flag.StringVar(&config.Cfg.Host, "l", config.Cfg.Host, "Specify a listen address")
 	flag.Parse()
 
+	log.Printf("[INFO] Current config values: %+v\n", config.Cfg)
+
 	switch config.Cfg.Http_client_ver {
 	case 1:
 		log.Println("[INFO] Using HTTP/1.1 Client")

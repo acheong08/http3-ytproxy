@@ -28,14 +28,14 @@ func forbiddenChecker(resp *http.Response, w http.ResponseWriter) error {
 	return nil
 }
 
-func checkRequest(w http.ResponseWriter, req *http.Request, params url.Values) {
+func checkRequest(w http.ResponseWriter, req *http.Request, params url.Values) bool {
 	host := params.Get("host")
 
 	parts := strings.Split(strings.ToLower(host), ".")
 	if len(parts) < 2 {
 		w.WriteHeader(400)
 		io.WriteString(w, "Invalid hostname.")
-		return
+		return true
 	}
 
 	domain := parts[len(parts)-2] + "." + parts[len(parts)-1]
@@ -50,9 +50,25 @@ func checkRequest(w http.ResponseWriter, req *http.Request, params url.Values) {
 	if disallowed {
 		w.WriteHeader(401)
 		io.WriteString(w, "Non YouTube domains are not supported.")
-		return
+		return true
 	}
 
+	expire, err := strconv.ParseInt(params.Get("expire"), 10, 64)
+	if err != nil {
+		w.WriteHeader(500)
+		io.WriteString(w, "Expire query string undefined")
+		return true
+	}
+
+	// Prevent the process of already expired playbacks
+	// since they will return 403 from googlevideo server
+	if (expire - time.Now().Unix()) <= 0 {
+		w.WriteHeader(403)
+		io.WriteString(w, "Videoplayback URL has expired.")
+		return true
+	}
+
+	return false
 }
 
 func Videoplayback(w http.ResponseWriter, req *http.Request) {
@@ -80,6 +96,8 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		q.Set("pot", pot)
 		q.Set("ip", ip)
 	}
+
+	if checkRequest(w, req, q) {
 		return
 	}
 

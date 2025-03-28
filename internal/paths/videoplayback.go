@@ -102,10 +102,19 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	host := q.Get("host")
+	title := q.Get("title")
 	q.Del("host")
+	q.Del("title")
 
-	if req.Header.Get("Range") != "" {
-		q.Set("range", strings.Split(req.Header.Get("Range"), "=")[1])
+	rangeHeader := req.Header.Get("range")
+	var requestBytes string
+	if rangeHeader != "" {
+		requestBytes = strings.Split(rangeHeader, "=")[1]
+	} else {
+		requestBytes = ""
+	}
+	if requestBytes != "" {
+		q.Set("range", requestBytes)
 	}
 
 	path := req.URL.EscapedPath()
@@ -162,7 +171,43 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 
 	utils.CopyHeadersNew(resp.Header, w.Header())
 
-	w.WriteHeader(resp.StatusCode)
+	if title != "" {
+		content := "attachment; filename=\"" + url.PathEscape(title) + "\"; filename*=UTF-8''" + url.PathEscape(title)
+		w.Header().Set("content-disposition", content)
+	}
+
+	if requestBytes != "" && resp.StatusCode == http.StatusOK {
+		// check for range headers in the forms:
+		// "bytes=0-" get full length from start
+		// "bytes=500-" get full length from 500 bytes in
+		// "bytes=500-1000" get 500 bytes starting from 500
+		byteParts := strings.Split(requestBytes, "-")
+		firstByte, lastByte := byteParts[0], byteParts[1]
+		fmt.Println(byteParts)
+		if lastByte != "" {
+			w.Header().Add("content-range", "bytes "+requestBytes+"/*")
+			w.WriteHeader(206)
+		} else {
+			fmt.Println("nolastbyte")
+			// i.e. "bytes=0-", "bytes=600-"
+			// full size of content is able to be calculated, so a full Content-Range header can be constructed
+			bytesReceived := resp.Header.Get("content-length")
+			firstByteInt, _ := strconv.Atoi(firstByte)
+			bytesReceivedInt, _ := strconv.Atoi(bytesReceived)
+			// last byte should always be one less than the length
+			totalContentLength := firstByteInt + bytesReceivedInt
+			lastByte := totalContentLength - 1
+			lastByteString := strconv.Itoa(lastByte)
+			totalContentLengthString := strconv.Itoa(totalContentLength)
+			w.Header().Add("content-range", "bytes "+firstByte+"-"+lastByteString+"/"+totalContentLengthString)
+			if firstByte != "0" {
+				// only part of the total content returned, 206
+				w.WriteHeader(206)
+			}
+		}
+	}
+
+	// w.WriteHeader(resp.StatusCode)
 
 	if req.Method == "GET" && (resp.Header.Get("Content-Type") == "application/x-mpegurl" || resp.Header.Get("Content-Type") == "application/vnd.apple.mpegurl") {
 		bytes, err := io.ReadAll(resp.Body)

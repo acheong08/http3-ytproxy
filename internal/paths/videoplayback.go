@@ -2,6 +2,7 @@ package paths
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -57,33 +58,28 @@ func checkRequest(w http.ResponseWriter, req *http.Request, params url.Values) {
 func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 
-	if q.Get("enc") == "yes" {
-		deencryptedQueryParams, err := utils.DecryptQueryParams(req.URL.Query().Get("data"), config.Cfg.Companion.Secret_key)
+	if q.Get("enc") == "true" {
+		decryptedQueryParams, err := utils.DecryptQueryParams(req.URL.Query().Get("data"), config.Cfg.Companion.Secret_key)
 		if err != nil {
 			http.Error(w, "Internal Server Error:\nFailed to decrypt query parameters", http.StatusInternalServerError)
 			return
 		}
-		q, err = url.ParseQuery(deencryptedQueryParams)
+
+		var structuredDecryptedQueryParams [][]string
+
+		err = json.Unmarshal([]byte(decryptedQueryParams), &structuredDecryptedQueryParams)
 		if err != nil {
 			http.Error(w, "Internal Server Error:\nFailed to parse query parameters from the decrypted query parameters", http.StatusInternalServerError)
 			return
 		}
+
+		pot := structuredDecryptedQueryParams[1][1]
+		ip := structuredDecryptedQueryParams[0][1]
+		q.Del("enc")
+		q.Del("data")
+		q.Set("pot", pot)
+		q.Set("ip", ip)
 	}
-
-	checkRequest(w, req, q)
-
-	expire, err := strconv.ParseInt(q.Get("expire"), 10, 64)
-	if err != nil {
-		w.WriteHeader(500)
-		io.WriteString(w, "Expire query string undefined")
-		return
-	}
-
-	// Prevent the process of already expired playbacks
-	// since they will return 403 from googlevideo server
-	if (expire - time.Now().Unix()) <= 0 {
-		w.WriteHeader(403)
-		io.WriteString(w, "Videoplayback URL has expired.")
 		return
 	}
 

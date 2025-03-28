@@ -79,7 +79,7 @@ func PanicHandler(w http.ResponseWriter) {
 
 // https://stackoverflow.com/a/41652605
 func DecryptQueryParams(encryptedQuery string, key string) (string, error) {
-	se, err := base64.URLEncoding.DecodeString(encryptedQuery)
+	se, err := base64.StdEncoding.DecodeString(encryptedQuery)
 	if err != nil {
 		log.Println("[ERROR] Error when decoding base64 string:", err)
 		return "", err

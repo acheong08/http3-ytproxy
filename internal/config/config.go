@@ -92,4 +92,11 @@ func LoadConfig() {
 			Secret_key: getEnvString("SECRET_KEY", "", false),
 		},
 	}
+	checkConfig()
+}
+
+func checkConfig() {
+	if len(Cfg.Companion.Secret_key) > 16 {
+		log.Fatalln("The value of 'companion.secret_key' (YTPROXY_SECRET_KEY) needs to be a size of 16 characters.")
+	}
 }

@@ -183,12 +183,10 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		// "bytes=500-1000" get 500 bytes starting from 500
 		byteParts := strings.Split(requestBytes, "-")
 		firstByte, lastByte := byteParts[0], byteParts[1]
-		fmt.Println(byteParts)
 		if lastByte != "" {
 			w.Header().Add("content-range", "bytes "+requestBytes+"/*")
 			w.WriteHeader(206)
 		} else {
-			fmt.Println("nolastbyte")
 			// i.e. "bytes=0-", "bytes=600-"
 			// full size of content is able to be calculated, so a full Content-Range header can be constructed
 			bytesReceived := resp.Header.Get("content-length")

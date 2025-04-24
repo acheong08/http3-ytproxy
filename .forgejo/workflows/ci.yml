@@ -32,17 +32,6 @@ jobs:
             type=sha,format=short,prefix={{date 'YYYY.MM.DD'}}-,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
 
-      - name: Go Build Cache for Docker
-        uses: actions/cache@v4
-        with:
-          path: go-build-cache
-          key: ${{ runner.os }}-go-build-cache-${{ hashFiles('**/go.sum') }}
-
-      - name: Inject go-build-cache
-        uses: https://github.com/reproducible-containers/buildkit-cache-dance@v3
-        with:
-          cache-source: go-build-cache
-
       - name: Build and push Docker
         uses: docker/build-push-action@v6
         with:
@@ -50,3 +39,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

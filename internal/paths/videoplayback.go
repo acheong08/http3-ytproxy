@@ -184,7 +184,14 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 		byteParts := strings.Split(requestBytes, "-")
 		firstByte, lastByte := byteParts[0], byteParts[1]
 		if lastByte != "" {
-			w.Header().Add("content-range", "bytes "+requestBytes+"/*")
+			clen := q.Get("clen")
+
+			if clen == "" {
+				w.Header().Add("content-range", "bytes "+requestBytes+"/*")
+			} else {
+				w.Header().Add("content-range", "bytes "+requestBytes+"/"+clen)
+			}
+
 			w.WriteHeader(206)
 		} else {
 			// i.e. "bytes=0-", "bytes=600-"
@@ -204,8 +211,6 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-
-	// w.WriteHeader(resp.StatusCode)
 
 	if req.Method == "GET" && (resp.Header.Get("Content-Type") == "application/x-mpegurl" || resp.Header.Get("Content-Type") == "application/vnd.apple.mpegurl") {
 		bytes, err := io.ReadAll(resp.Body)

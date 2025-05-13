@@ -1,5 +1,9 @@
 name: "CI"
 
+permissions:
+  contents: read
+  packages: write
+
 on:
   workflow_dispatch:
   push:
@@ -7,8 +11,7 @@ on:
 
 jobs:
   build:
-    runs-on: runner
-
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -19,15 +22,15 @@ jobs:
       - name: Login to Docker Container Registry (git.nadeko.net)
         uses: docker/login-action@v3
         with:
-          registry: git.nadeko.net
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.TOKEN }}
+          registry: ghcr.io
+          username: acheong08
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: git.nadeko.net/fijxu/http3-ytproxy
+          images: ghcr.io/acheong08/http3-ytproxy
           tags: |
             type=sha,format=short,prefix={{date 'YYYY.MM.DD'}}-,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
@@ -36,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha

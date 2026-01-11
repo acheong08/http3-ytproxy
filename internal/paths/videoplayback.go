@@ -30,6 +30,9 @@ func forbiddenChecker(resp *http.Response, w http.ResponseWriter) error {
 
 func checkRequest(w http.ResponseWriter, req *http.Request, params url.Values) bool {
 	host := params.Get("host")
+	if host == "" {
+		host = params.Get("__host")
+	}
 
 	parts := strings.Split(strings.ToLower(host), ".")
 	if len(parts) < 2 {
@@ -102,6 +105,9 @@ func Videoplayback(w http.ResponseWriter, req *http.Request) {
 	}
 
 	host := q.Get("host")
+	if host == "" {
+		host = q.Get("__host")
+	}
 	title := q.Get("title")
 	q.Del("host")
 	q.Del("title")

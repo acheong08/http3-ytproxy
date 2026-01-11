@@ -117,9 +117,9 @@ func beforeProxy(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if req.Method != "GET" && req.Method != "HEAD" {
+		if req.Method != "POST" && req.Method != "GET" && req.Method != "HEAD" {
 			w.WriteHeader(405)
-			io.WriteString(w, "Only GET and HEAD requests are allowed.")
+			io.WriteString(w, "Only GET, HEAD, and POST requests are allowed.")
 			return
 		}
 
